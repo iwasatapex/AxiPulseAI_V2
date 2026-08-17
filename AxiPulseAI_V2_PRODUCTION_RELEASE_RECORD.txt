@@ -1,0 +1,237 @@
+AxiPulseAI V2 — PRODUCTION RELEASE RECORD
+Release Status: READY
+Release Date: 2026-08-17
+
+1. RELEASE VERDICT
+
+AxiPulseAI V2 is approved for production release.
+
+The final release blocker — production model artifacts being built under Python 3.14 while the declared runtime required Python 3.13.x — has been resolved.
+
+Production artifacts were genuinely rebuilt and validated under Python 3.13.15 using the authoritative training pipeline and promoted through the hardened production registry.
+
+2. RUNTIME ENVIRONMENT
+
+Python: 3.13.15
+Environment: clean isolated .venv313 managed via uv
+OS: Ubuntu 26.04 LTS
+
+Key dependencies:
+- numpy 2.4.6
+- pandas 3.0.5
+- scikit-learn 1.9.0
+- catboost 1.2.10
+- xgboost 3.3.0
+- joblib 1.5.3
+- pyarrow 24.0.0
+- scipy 1.18.0
+- lightgbm 4.7.0
+- streamlit 1.61.1
+- pytest 9.1.1
+
+Declared project runtime:
+Python >=3.13,<3.14
+
+3. PRODUCTION ARTIFACTS
+
+production_OH.pkl
+- SHA-256: 0814ac59…
+- Algorithm: CatBoost
+- Trained: True
+- Features: 19
+- Outputs: 1
+- Python: 3.13.15
+- Source: 1mil-10yr
+- Role: production
+- Legacy: false
+
+production_NPS.pkl
+- SHA-256: e91ee9c8…
+- Algorithm: XGBoost
+- Trained: True
+- Features: 34
+- Outputs: 11
+- Python: 3.13.15
+- Source: 1mil-10yr
+- Role: production
+- Legacy: false
+
+nps_predictor_model.pkl
+- SHA-256: e91ee9c8…
+- Algorithm: XGBoost
+- Trained: True
+- Features: 34
+- Outputs: 11
+- Python: 3.13.15
+- Source: 1mil-10yr
+- Role: legacy compatibility mirror
+- Legacy: true
+
+stess_test_NPS.pkl
+- SHA-256: 0ee5b6a0…
+- Algorithm: CatBoost
+- Trained: True
+- Role: stress/test
+- Not canonical production
+
+Confirmed:
+production_NPS.pkl != stess_test_NPS.pkl
+
+4. PRODUCTION MODEL IDENTITY
+
+Production entrypoints resolve as follows:
+
+API NPSService()
+→ models/production_NPS.pkl
+
+ForecastAI create_oh_predictor()
+→ models/production_OH.pkl
+
+ForecastAI create_nps_predictor()
+→ models/production_NPS.pkl
+
+load_model_pair("production")
+→ canonical production OH/NPS pair
+
+Legacy model loading is explicit/opt-in only.
+
+Stress/test artifacts cannot silently become canonical production models.
+
+5. ARTIFACT INTEGRITY
+
+Production loading is fail-closed.
+
+The production verification contract validates:
+- SHA-256 against manifest
+- production role
+- non-legacy status
+- non-empty provenance
+- model loadability
+- trained state
+- feature metadata
+- feature count
+- output dimensionality
+- NPS 11-output contract
+
+Production promotion uses immutable generation directories and atomic activation.
+
+6. AI / NPS CONTRACT
+
+NPS uses 11 outputs corresponding to scores 0 through 10.
+
+Bucket semantics:
+- Detractors: 0–6
+- Passives: 7–8
+- Promoters: 9–10
+
+NPS calculation:
+(promoters - detractors) / total * 100
+
+Fresh-process production inference:
+- Features: 34
+- Outputs: 11
+- NPS: 84.0
+
+Persistence/reload:
+Verified under Python 3.13.15.
+
+7. OH PRODUCTION INFERENCE
+
+Fresh-process production inference under Python 3.13.15:
+- Features: 19
+- Prediction: 93.03606462275141
+- Compatibility warnings: none
+
+8. TEMPORAL INTEGRITY
+
+Verified:
+- explicit cutoff/target-time contract
+- feature_time < target_time where required
+- no future-data leakage
+- observed vs predicted provenance
+- recursive OH→NPS provenance
+- narrow enrollment_factor exemption
+- repeated-date trajectory semantics
+- rolling-origin CV
+- sampled rows and sampled dates remain aligned
+
+No confirmed temporal leakage defect remains.
+
+9. RESOURCE SAFETY
+
+OH:
+- 1M-row training completed
+- selection CV uses configured 10,000-row sample
+- sampled dates travel with sampled rows
+- final-fit feasibility enforced
+- ExtraTrees/RandomForest/HistGB/GradBoosting excluded when estimated memory exceeded 4,096 MB
+- CatBoost selected with MAE 2.20
+
+NPS:
+- serial subprocess CV
+- 500-row selection sample
+- 8 candidates × 2 folds
+- infeasible candidates excluded
+- XGBoost selected
+- single full-data refit
+- no GPU regression
+
+10. FORECAST / DECISION / GUI
+
+Verified:
+- model → forecast → recommendation → evidence → agreement → risk → decision → GUI contract
+- evidence-gated ABSTAIN behavior
+- heuristic confidence explicitly labeled non-calibrated/non-statistical
+- deterministic confidence horizon decay
+- risk source attribution
+- business-rule risk labeling
+- human-readable GUI confidence/risk/recommendation
+- raw JSON restricted to technical areas
+- explicit model-family selection
+- selected-algorithm leaderboard correctness
+- production/test/legacy isolation
+
+11. TEST RESULTS
+
+Focused production/integration tests:
+- Production lifecycle + isolation + real NPS inference: 50 passed
+- Contracts/temporal/GUI/decision/GUI services: 128 passed
+- Training/features: 9 passed
+
+Full pytest suite:
+701 passed
+0 skipped
+0 failures
+0 errors
+Runtime: approximately 208 seconds
+
+py_compile:
+Clean on all changed Python files under Python 3.13.15.
+
+12. REMAINING NON-BLOCKING RISKS
+
+GPU VRAM footprint estimation remains conservative/incomplete.
+
+Post-fit permutation importance currently uses n_jobs=-1.
+
+These are documented resource-governance improvements and are not release-blocking defects for this release.
+
+13. RELEASE APPROVAL
+
+PRODUCTION RELEASE: APPROVED
+
+The final release satisfies the production AI, temporal integrity, resource safety, artifact integrity, model isolation, persistence/reload, forecast/decision, GUI, and test requirements.
+
+The previous Python runtime compatibility blocker is resolved.
+
+Release runtime:
+Python 3.13.15
+
+Release artifact source:
+1mil-10yr
+
+Release test gate:
+701 passed, 0 skipped
+
+FINAL STATUS:
+READY

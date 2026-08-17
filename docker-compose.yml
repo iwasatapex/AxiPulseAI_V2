@@ -1,0 +1,23 @@
+services:
+  axipulse-api:
+    build: .
+    container_name: axipulse-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./axipulse.db
+      AXIPULSE_ENV: production
+      AXIPULSE_API_KEY: ${AXIPULSE_API_KEY:?AXIPULSE_API_KEY is required}
+      AXIPULSE_JWT_SECRET: ${AXIPULSE_JWT_SECRET:?AXIPULSE_JWT_SECRET is required}
+      AXIPULSE_ADMIN_USERNAME: ${AXIPULSE_ADMIN_USERNAME:?AXIPULSE_ADMIN_USERNAME is required}
+      AXIPULSE_ADMIN_PASSWORD_SHA256: ${AXIPULSE_ADMIN_PASSWORD_SHA256:?AXIPULSE_ADMIN_PASSWORD_SHA256 is required}
+    volumes:
+      - ./axipulse.db:/app/axipulse.db
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus_api_token:/etc/prometheus/axipulse_api_token:ro

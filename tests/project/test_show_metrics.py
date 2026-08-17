@@ -1,0 +1,22 @@
+import importlib
+
+def test_show_metrics_surface():
+    module = importlib.import_module("show_metrics")
+    assert hasattr(module, "clear_screen")
+    assert hasattr(module, "print_header")
+    assert hasattr(module, "print_section")
+    assert hasattr(module, "print_metric")
+    assert hasattr(module, "interactive_menu")
+    assert hasattr(module, "main")
+    assert hasattr(module, "load_csv")
+    assert hasattr(module, "get_column")
+    assert hasattr(module, "scale_oh")
+    assert hasattr(module, "show_metrics")
+    assert hasattr(module, "show_operational_health")
+    assert hasattr(module, "show_kpi_metrics")
+    assert hasattr(module, "show_nps_metrics")
+    assert hasattr(module, "show_call_volume")
+    assert hasattr(module, "show_events")
+    assert hasattr(module, "show_summary")
+    assert hasattr(module, "Colors")
+    assert hasattr(module, "MetricsDashboard")

@@ -1,0 +1,26 @@
+import streamlit as st; import pandas as pd; import numpy as np; import plotly.graph_objects as go; from datetime import datetime
+st.set_page_config(page_title="AxiPulseAI Dashboard", layout="wide")
+st.title("📊 AxiPulseAI Analytics")
+days = st.slider("Days", 1, 30, 7)
+dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+data = pd.DataFrame({'date': dates, 'health': np.random.normal(75, 8, days).clip(50, 95), 'nps': np.random.normal(82, 5, days).clip(70, 90), 'promoters': np.random.randint(400, 700, days), 'passives': np.random.randint(30, 80, days), 'detractors': np.random.randint(20, 60, days), 'calls': np.random.randint(1500, 2500, days)})
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("🏥 Health", f"{data['health'].iloc[-1]:.1f}")
+c2.metric("⭐ NPS", f"{data['nps'].iloc[-1]:.1f}")
+c3.metric("📊 Promoters", f"{data['promoters'].iloc[-1]:,}")
+c4.metric("📞 Calls (7d)", f"{data['calls'].tail(7).sum():,}")
+c1, c2 = st.columns(2)
+with c1: fig = go.Figure(); fig.add_trace(go.Scatter(x=data['date'], y=data['health'], mode='lines+markers')); fig.update_layout(height=400); st.plotly_chart(fig, use_container_width=True)
+with c2: fig = go.Figure(); fig.add_trace(go.Scatter(x=data['date'], y=data['nps'], mode='lines+markers')); fig.update_layout(height=400); st.plotly_chart(fig, use_container_width=True)
+c1, c2 = st.columns(2)
+with c1:
+    last = data.iloc[-1]
+    fig = go.Figure(data=[go.Bar(name='Promoters', x=['Dist'], y=[last['promoters']], marker_color='green'), go.Bar(name='Passives', x=['Dist'], y=[last['passives']], marker_color='orange'), go.Bar(name='Detractors', x=['Dist'], y=[last['detractors']], marker_color='red')])
+    fig.update_layout(height=350, barmode='stack')
+    st.plotly_chart(fig, use_container_width=True)
+with c2:
+    fig = go.Figure(data=[go.Bar(x=['Promoters', 'Passives', 'Detractors'], y=[last['promoters'], last['passives'], last['detractors']], marker_color=['green', 'orange', 'red'])])
+    fig.update_layout(height=350)
+    st.plotly_chart(fig, use_container_width=True)
+st.dataframe(data.tail(5))
+st.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

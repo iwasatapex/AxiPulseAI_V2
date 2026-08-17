@@ -1,0 +1,36 @@
+{
+  "production_OH.pkl": {
+    "sha256": "0814ac592c5e63265a71c4339fb6b09c38a7c0780ffbded34971c2c95eb6923b",
+    "source": "1mil-10yr",
+    "role": "production",
+    "algorithm": "CatBoost",
+    "feature_metadata": "[\"actual_quality\", \"quality_gap\", \"actual_competency\", \"competency_gap\", \"actual_attendance\", \"attendance_gap\", \"actual_release_rate\", \"release_gap\", \"actual_transfer_rate\", \"transfer_gap\", \"total_calls_received\", \"total_release_calls\", \"operational_intelligence_factor\", \"day_of_week_sin\", \"day_of_week_cos\", \"month_sin\", \"month_cos\", \"quarter\", \"is_weekend\"]",
+    "n_features_in": 0
+  },
+  "production_NPS.pkl": {
+    "sha256": "e91ee9c8f513ba2c98fe1ebc0ce22f0f7a6d3222a63dbb799db6618605ee8706",
+    "source": "1mil-10yr",
+    "role": "production",
+    "algorithm": "CatBoost",
+    "feature_metadata": "[\"actual_quality\", \"quality_gap\", \"actual_competency\", \"competency_gap\", \"actual_attendance\", \"attendance_gap\", \"actual_release_rate\", \"release_gap\", \"actual_transfer_rate\", \"transfer_gap\", \"total_calls_received\", \"total_release_calls\", \"operational_intelligence_factor\", \"day_of_week_sin\", \"day_of_week_cos\", \"month_sin\", \"month_cos\", \"quarter\", \"is_weekend\"]",
+    "n_features_in": 34
+  },
+  "operation_health_predictor.joblib": {
+    "sha256": "0814ac592c5e63265a71c4339fb6b09c38a7c0780ffbded34971c2c95eb6923b",
+    "source": "1mil-10yr",
+    "role": "legacy",
+    "algorithm": "CatBoost",
+    "feature_metadata": "[\"actual_quality\", \"quality_gap\", \"actual_competency\", \"competency_gap\", \"actual_attendance\", \"attendance_gap\", \"actual_release_rate\", \"release_gap\", \"actual_transfer_rate\", \"transfer_gap\", \"total_calls_received\", \"total_release_calls\", \"operational_intelligence_factor\", \"day_of_week_sin\", \"day_of_week_cos\", \"month_sin\", \"month_cos\", \"quarter\", \"is_weekend\"]",
+    "n_features_in": 0,
+    "legacy": true
+  },
+  "nps_predictor_model.pkl": {
+    "sha256": "e91ee9c8f513ba2c98fe1ebc0ce22f0f7a6d3222a63dbb799db6618605ee8706",
+    "source": "1mil-10yr",
+    "role": "legacy",
+    "algorithm": "CatBoost",
+    "feature_metadata": "[\"actual_quality\", \"quality_gap\", \"actual_competency\", \"competency_gap\", \"actual_attendance\", \"attendance_gap\", \"actual_release_rate\", \"release_gap\", \"actual_transfer_rate\", \"transfer_gap\", \"total_calls_received\", \"total_release_calls\", \"operational_intelligence_factor\", \"day_of_week_sin\", \"day_of_week_cos\", \"month_sin\", \"month_cos\", \"quarter\", \"is_weekend\"]",
+    "n_features_in": 34,
+    "legacy": true
+  }
+}

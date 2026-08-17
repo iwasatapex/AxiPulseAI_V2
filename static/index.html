@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operational Health Index</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f6f9;
+            color: #1e293b;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; color: #0f172a; }
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 24px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .tabs {
+            display: flex;
+            gap: 6px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 10px 22px;
+            background: none;
+            border: none;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #64748b;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: #f1f5f9; }
+        .tab-btn.active {
+            color: #2563eb;
+            background: #eff6ff;
+            border-bottom: 3px solid #2563eb;
+        }
+        .tab-content { display: none; animation: fade 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fade { from { opacity: 0.3; } to { opacity: 1; } }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px 20px;
+            margin: 16px 0;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 3px;
+        }
+        .form-group input {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            background: #f8fafc;
+            transition: border 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #2563eb;
+            background: white;
+        }
+        .btn {
+            padding: 10px 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 12px;
+        }
+        .btn:hover { background: #1d4ed8; }
+        .btn-success { background: #16a34a; }
+        .btn-success:hover { background: #15803d; }
+
+        .drop-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafbfc;
+            margin: 16px 0;
+        }
+        .drop-zone:hover { border-color: #2563eb; background: #f8faff; }
+        .drop-zone.dragover { border-color: #2563eb; background: #eff6ff; }
+        .drop-zone p { color: #64748b; font-size: 15px; }
+        .drop-zone .icon { font-size: 40px; margin-bottom: 8px; }
+
+        .lb-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        .lb-table th {
+            background: #f1f5f9;
+            text-align: left;
+            padding: 10px 14px;
+            font-weight: 600;
+            color: #334155;
+        }
+        .lb-table td { padding: 8px 14px; border-bottom: 1px solid #e2e8f0; }
+        .result-box {
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin: 16px 0;
+            border-left: 4px solid #2563eb;
+        }
+        .result-box .big-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .log-box {
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 16px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin: 12px 0;
+        }
+        .flex-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-badge.trained { background: #dcfce7; color: #166534; }
+        .status-badge.untrained { background: #fee2e2; color: #991b1b; }
+
+        @media (max-width: 600px) {
+            .container { padding: 16px; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🏥 Operational Health Index</h1>
+    <div class="subtitle">
+        <span>Status: <span id="status-badge" class="status-badge untrained">Not Trained</span></span>
+        <span id="model-name-display">Model: —</span>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="train">📤 Train</button>
+        <button class="tab-btn" data-tab="predict">📊 Predict</button>
+        <button class="tab-btn" data-tab="reverse">🔁 Reverse</button>
+    </div>
+
+    <!-- ========== TAB 1: TRAIN ========== -->
+    <div id="tab-train" class="tab-content active">
+        <h3>Upload Training File</h3>
+        <p style="color:#64748b; font-size:14px;">Upload a CSV or Excel file with one row per day.</p>
+        <div id="drop-zone" class="drop-zone">
+            <div class="icon">📂</div>
+            <p><strong>Drag & drop</strong> your file here, or click to browse</p>
+            <p style="font-size:12px; color:#94a3b8;">Supports .csv, .xlsx</p>
+            <input type="file" id="file-input" accept=".csv,.xlsx" style="display:none;">
+        </div>
+        <div class="flex-row">
+            <button class="btn btn-success" id="train-btn" disabled>▶ Train Model</button>
+            <span id="file-name" style="color:#64748b; font-size:14px;">No file selected</span>
+        </div>
+        <div id="train-log" class="log-box" style="display:none; margin-top:16px;"></div>
+        <div id="train-result" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- ========== TAB 2: PREDICT ========== -->
+    <div id="tab-predict" class="tab-content">
+        <h3>Predict Operational Health Index</h3>
+        <p style="color:#64748b; font-size:14px;">Enter today's values.</p>
+        <div class="form-grid">
+            <div class="form-group"><label>target_quality</label><input type="number" id="p_target_quality" value="85" step="0.1"></div>
+            <div class="form-group"><label>actual_quality</label><input type="number" id="p_actual_quality" value="78" step="0.1"></div>
+            <div class="form-group"><label>target_competency</label><input type="number" id="p_target_competency" value="82" step="0.1"></div>
+            <div class="form-group"><label>actual_competency</label><input type="number" id="p_actual_competency" value="80" step="0.1"></div>
+            <div class="form-group"><label>target_attendance</label><input type="number" id="p_target_attendance" value="92" step="0.1"></div>
+            <div class="form-group"><label>actual_attendance</label><input type="number" id="p_actual_attendance" value="90" step="0.1"></div>
+            <div class="form-group"><label>target_release_rate</label><input type="number" id="p_target_release_rate" value="60" step="0.1"></div>
+            <div class="form-group"><label>actual_release_rate</label><input type="number" id="p_actual_release_rate" value="62" step="0.1"></div>
+            <div class="form-group"><label>target_transfer_rate</label><input type="number" id="p_target_transfer_rate" value="9" step="0.1"></div>
+            <div class="form-group"><label>actual_transfer_rate</label><input type="number" id="p_actual_transfer_rate" value="8" step="0.1"></div>
+            <div class="form-group"><label>total_calls_received</label><input type="number" id="p_total_calls_received" value="3400" step="1"></div>
+            <div class="form-group"><label>oif</label><input type="number" id="p_oif" value="5" step="0.1"></div>
+            <div class="form-group"><label>issue_type_ucard</label><input type="number" id="p_issue_type_ucard" value="30" step="0.1"></div>
+            <div class="form-group"><label>issue_type_claims</label><input type="number" id="p_issue_type_claims" value="50" step="0.1"></div>
+            <div class="form-group"><label>issue_type_enrollment</label><input type="number" id="p_issue_type_enrollment" value="15" step="0.1"></div>
+            <div class="form-group"><label>issue_type_disenrollment</label><input type="number" id="p_issue_type_disenrollment" value="5" step="0.1"></div>
+        </div>
+        <button class="btn" id="predict-btn">🔮 Predict</button>
+        <div id="predict-result" style="margin-top:16px;"></div>
+    </div>
+
+    <!-- ========== TAB 3: REVERSE ========== -->
+    <div id="tab-reverse" class="tab-content">
+        <h3>Reverse Optimizer</h3>
+        <p style="color:#64748b; font-size:14px;">Find the input values needed to hit a target score.</p>
+        <div class="form-grid">
+            <div class="form-group"><label>Target Score</label><input type="number" id="r_target" value="105" step="0.1"></div>
+            <div class="form-group"><label>Factors (comma-separated)</label><input type="text" id="r_factors" value="actual_quality" placeholder="e.g. actual_quality,oif"></div>
+        </div>
+        <h4>Fixed Values</h4>
+        <div class="form-grid">
+            <div class="form-group"><label>target_quality</label><input type="number" id="r_target_quality" value="85" step="0.1"></div>
+            <div class="form-group"><label>actual_quality</label><input type="number" id="r_actual_quality" value="78" step="0.1"></div>
+            <div class="form-group"><label>target_competency</label><input type="number" id="r_target_competency" value="82" step="0.1"></div>
+            <div class="form-group"><label>actual_competency</label><input type="number" id="r_actual_competency" value="80" step="0.1"></div>
+            <div class="form-group"><label>target_attendance</label><input type="number" id="r_target_attendance" value="92" step="0.1"></div>
+            <div class="form-group"><label>actual_attendance</label><input type="number" id="r_actual_attendance" value="90" step="0.1"></div>
+            <div class="form-group"><label>target_release_rate</label><input type="number" id="r_target_release_rate" value="60" step="0.1"></div>
+            <div class="form-group"><label>actual_release_rate</label><input type="number" id="r_actual_release_rate" value="62" step="0.1"></div>
+            <div class="form-group"><label>target_transfer_rate</label><input type="number" id="r_target_transfer_rate" value="9" step="0.1"></div>
+            <div class="form-group"><label>actual_transfer_rate</label><input type="number" id="r_actual_transfer_rate" value="8" step="0.1"></div>
+            <div class="form-group"><label>total_calls_received</label><input type="number" id="r_total_calls_received" value="3400" step="1"></div>
+            <div class="form-group"><label>oif</label><input type="number" id="r_oif" value="5" step="0.1"></div>
+            <div class="form-group"><label>issue_type_ucard</label><input type="number" id="r_issue_type_ucard" value="30" step="0.1"></div>
+            <div class="form-group"><label>issue_type_claims</label><input type="number" id="r_issue_type_claims" value="50" step="0.1"></div>
+            <div class="form-group"><label>issue_type_enrollment</label><input type="number" id="r_issue_type_enrollment" value="15" step="0.1"></div>
+            <div class="form-group"><label>issue_type_disenrollment</label><input type="number" id="r_issue_type_disenrollment" value="5" step="0.1"></div>
+        </div>
+        <button class="btn" id="reverse-btn">⚡ Optimize</button>
+        <div id="reverse-result" style="margin-top:16px;"></div>
+    </div>
+
+</div>
+
+<script>
+// ---------- Helpers ----------
+async function apiPost(endpoint, body) {
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---------- Status ----------
+async function checkStatus() {
+    try {
+        const res = await fetch('/health');
+        if (!res.ok) throw new Error('Health check failed');
+        const data = await res.json();
+        const badge = document.getElementById('status-badge');
+        const nameDisplay = document.getElementById('model-name-display');
+        if (data.trained) {
+            badge.className = 'status-badge trained';
+            badge.textContent = 'Trained ✅';
+            nameDisplay.textContent = 'Model: ' + (data.model || '—');
+        } else {
+            badge.className = 'status-badge untrained';
+            badge.textContent = 'Not Trained';
+            nameDisplay.textContent = 'Model: —';
+        }
+    } catch (e) {
+        console.warn('Status check failed:', e);
+    }
+}
+checkStatus();
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+    });
+});
+
+// ---------- Train ----------
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileName = document.getElementById('file-name');
+const trainBtn = document.getElementById('train-btn');
+let selectedFile = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        selectedFile = e.dataTransfer.files[0];
+        fileName.textContent = selectedFile.name;
+        trainBtn.disabled = false;
+    }
+});
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) {
+        selectedFile = fileInput.files[0];
+        fileName.textContent = selectedFile.name;
+        trainBtn.disabled = false;
+    }
+});
+
+trainBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    trainBtn.disabled = true;
+    const logBox = document.getElementById('train-log');
+    logBox.style.display = 'block';
+    logBox.textContent = 'Uploading...\n';
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    try {
+        const res = await fetch('/train', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+            logBox.textContent += '✅ Training complete!\n';
+            logBox.textContent += `Days trained: ${data.days || '?'}\n`;
+            logBox.textContent += `Model: ${data.model_name || '—'}\n`;
+            document.getElementById('train-result').innerHTML = `<div class="result-box">✅ Success! Trained on ${data.days || '?'} days.</div>`;
+            checkStatus();
+        } else {
+            logBox.textContent += '❌ Error: ' + (data.detail || 'Unknown error');
+            document.getElementById('train-result').innerHTML = `<div class="result-box" style="border-left-color:#dc2626;">❌ Failed</div>`;
+        }
+    } catch (e) {
+        logBox.textContent += '❌ Network error: ' + e.message;
+    } finally {
+        trainBtn.disabled = false;
+        selectedFile = null;
+        fileInput.value = '';
+        fileName.textContent = 'No file selected';
+    }
+});
+
+// ---------- Predict ----------
+function getPredictInputs() {
+    const ids = ['p_target_quality','p_actual_quality','p_target_competency','p_actual_competency','p_target_attendance','p_actual_attendance','p_target_release_rate','p_actual_release_rate','p_target_transfer_rate','p_actual_transfer_rate','p_total_calls_received','p_oif','p_issue_type_ucard','p_issue_type_claims','p_issue_type_enrollment','p_issue_type_disenrollment'];
+    const row = {};
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        const val = parseFloat(el.value);
+        if (isNaN(val)) throw new Error(`Field ${id} must be a number`);
+        // Rename: strip leading 'p_'
+        const key = id.replace(/^p_/, '');
+        row[key] = val;
+    });
+    // Build issue_types
+    const issueTypes = {
+        ucard: row.issue_type_ucard || 0,
+        claims: row.issue_type_claims || 0,
+        enrollment: row.issue_type_enrollment || 0,
+        disenrollment: row.issue_type_disenrollment || 0
+    };
+    // Remove issue_type_* from row (they go into issue_types)
+    const payload = {
+        date: new Date().toISOString().slice(0,10),
+        target_quality: row.target_quality,
+        target_competency: row.target_competency,
+        target_attendance: row.target_attendance,
+        target_release_rate: row.target_release_rate,
+        target_transfer_rate: row.target_transfer_rate,
+        actual_quality: row.actual_quality,
+        actual_competency: row.actual_competency,
+        actual_attendance: row.actual_attendance,
+        actual_release_rate: row.actual_release_rate,
+        actual_transfer_rate: row.actual_transfer_rate,
+        total_calls_received: row.total_calls_received,
+        oif: row.oif,
+        issue_types: issueTypes
+    };
+    return payload;
+}
+
+document.getElementById('predict-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('predict-btn');
+    btn.disabled = true;
+    const resultDiv = document.getElementById('predict-result');
+    resultDiv.innerHTML = '⏳ Predicting...';
+    try {
+        const payload = getPredictInputs();
+        // Get both score and leaderboard
+        const [predRes, lbRes] = await Promise.all([
+            apiPost('/predict', payload),
+            apiPost('/leaderboard', payload)
+        ]);
+        let html = `<div class="result-box"><div class="big-number">🏆 Operational Health Index: ${predRes.operational_health_index.toFixed(2)}</div></div>`;
+        // Leaderboard
+        const lb = lbRes.leaderboard || {};
+        if (Object.keys(lb).length) {
+            html += `<h4>Model Leaderboard</h4><table class="lb-table"><thead><tr><th>Model</th><th>Score</th></tr></thead><tbody>`;
+            Object.entries(lb).sort((a,b) => b[1]-a[1]).forEach(([name, score]) => {
+                const highlight = (name === '[ENSEMBLE]' || name === '[SELECTED]') ? ' style="background:#eff6ff;font-weight:bold;"' : '';
+                html += `<tr${highlight}><td>${escapeHtml(name)}</td><td>${score.toFixed(2)}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+        if (lbRes.failed_models && lbRes.failed_models.length) {
+            html += `<p style="color:#dc2626;">⚠️ Failed models: ${lbRes.failed_models.map(escapeHtml).join(', ')}</p>`;
+        }
+        resultDiv.innerHTML = html;
+    } catch (e) {
+        resultDiv.innerHTML = `<div class="result-box" style="border-left-color:#dc2626;">❌ ${escapeHtml(e.message)}</div>`;
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+// ---------- Reverse ----------
+function getReverseInputs() {
+    const ids = ['r_target','r_factors','r_target_quality','r_actual_quality','r_target_competency','r_actual_competency','r_target_attendance','r_actual_attendance','r_target_release_rate','r_actual_release_rate','r_target_transfer_rate','r_actual_transfer_rate','r_total_calls_received','r_oif','r_issue_type_ucard','r_issue_type_claims','r_issue_type_enrollment','r_issue_type_disenrollment'];
+    const values = {};
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === 'r_factors') {
+            values.factors = el.value.split(',').map(s => s.trim()).filter(s => s);
+            return;
+        }
+        if (id === 'r_target') {
+            values.target = parseFloat(el.value) || 105;
+            return;
+        }
+        const key = id.replace(/^r_/, '');
+        const val = parseFloat(el.value);
+        if (isNaN(val) && key !== '') throw new Error(`Field ${id} must be a number`);
+        values[key] = val;
+    });
+    // Build fixed_values (all except target, factors, and issue_types)
+    const fixed = {};
+    const exclude = ['target','factors','issue_type_ucard','issue_type_claims','issue_type_enrollment','issue_type_disenrollment'];
+    for (const [k,v] of Object.entries(values)) {
+        if (!exclude.includes(k)) fixed[k] = v;
+    }
+    const issueTypes = {
+        ucard: values.issue_type_ucard || 0,
+        claims: values.issue_type_claims || 0,
+        enrollment: values.issue_type_enrollment || 0,
+        disenrollment: values.issue_type_disenrollment || 0
+    };
+    return {
+        target_score: values.target,
+        optimize_factors: values.factors,
+        fixed_values: fixed,
+        issue_types: issueTypes
+    };
+}
+
+document.getElementById('reverse-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('reverse-btn');
+    btn.disabled = true;
+    const resultDiv = document.getElementById('reverse-result');
+    resultDiv.innerHTML = '⏳ Optimizing...';
+    try {
+        const payload = getReverseInputs();
+        const data = await apiPost('/reverse', payload);
+        let html = `<div class="result-box"><div class="big-number">✅ Optimized</div></div>`;
+        // Show optimized factors
+        const factors = payload.optimize_factors;
+        html += `<h4>Optimized Factors</h4><table class="lb-table"><thead><tr><th>Factor</th><th>Recommended</th></tr></thead><tbody>`;
+        for (const f of factors) {
+            const val = data.optimized_factors[f];
+            if (val !== undefined) {
+                const current = payload.fixed_values[f] || 0;
+                const change = val - current;
+                const sign = change > 0 ? '+' : '';
+                html += `<tr><td><strong>${escapeHtml(f)}</strong></td><td>${val.toFixed(2)} (${sign}${change.toFixed(2)})</td></tr>`;
+            }
+        }
+        html += `</tbody></table>`;
+        html += `<div>Predicted Ops Health: <strong>${data.predicted_score.toFixed(2)}</strong> (target: ${data.target_score}, error: ${data.error.toFixed(2)})</div>`;
+        // Leaderboard
+        const lb = data.leaderboard || {};
+        if (Object.keys(lb).length) {
+            html += `<h4>Leaderboard (for optimized values)</h4><table class="lb-table"><thead><tr><th>Model</th><th>Score</th></tr></thead><tbody>`;
+            Object.entries(lb).sort((a,b) => b[1]-a[1]).forEach(([name, score]) => {
+                const highlight = (name === '[ENSEMBLE]' || name === '[SELECTED]') ? ' style="background:#eff6ff;font-weight:bold;"' : '';
+                html += `<tr${highlight}><td>${escapeHtml(name)}</td><td>${score.toFixed(2)}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+        if (data.failed_models && data.failed_models.length) {
+            html += `<p style="color:#dc2626;">⚠️ Failed models: ${data.failed_models.map(escapeHtml).join(', ')}</p>`;
+        }
+        resultDiv.innerHTML = html;
+    } catch (e) {
+        resultDiv.innerHTML = `<div class="result-box" style="border-left-color:#dc2626;">❌ ${escapeHtml(e.message)}</div>`;
+    } finally {
+        btn.disabled = false;
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: axipulse-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["axipulse-api:8000"]
+    authorization:
+      credentials_file: /etc/prometheus/axipulse_api_token

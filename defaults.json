@@ -1,0 +1,10 @@
+{
+  "business_intelligence_factor": 0,
+  "member_intelligence_factor": 0,
+  "target_release_rate": 60.0,
+  "target_quality": 87.0,
+  "target_competency": 93.0,
+  "target_attendance": 90.0,
+  "target_transfer_rate": 9.0,
+  "operational_intelligence_factor": 0
+}
