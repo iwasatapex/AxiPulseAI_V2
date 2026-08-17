@@ -1,0 +1,37 @@
+{
+  "version": "candidate-100k-10yr",
+  "status": "CANDIDATE",
+  "role": "candidate",
+  "source": "100k-10yr",
+  "python_version": "3.13.15",
+  "library_versions": {
+    "python": "3.13.15",
+    "numpy": "2.4.6",
+    "pandas": "3.0.5",
+    "scipy": "1.18.0",
+    "scikit-learn": "1.9.0",
+    "catboost": "1.2.10",
+    "xgboost": "3.3.0",
+    "lightgbm": "4.7.0",
+    "joblib": "1.5.3"
+  },
+  "artifacts": {
+    "OH.pkl": {
+      "sha256": "3a62bb06373046cda4c942417a7c39c39d752095da7702cbbaeceb488195371e",
+      "algorithm": "CatBoost",
+      "role": "candidate",
+      "features": 19,
+      "outputs": 1,
+      "legacy": false
+    },
+    "NPS.pkl": {
+      "sha256": "a88ed2f6f9f2383e1256f4eac8a911ae14cd3772cae6eb47a06e4f39ac45b4bc",
+      "algorithm": "XGBoost",
+      "role": "candidate",
+      "features": 34,
+      "outputs": 11,
+      "legacy": false
+    }
+  },
+  "note": "100k-10yr release-candidate experiment. NOT promoted. Does not replace production."
+}

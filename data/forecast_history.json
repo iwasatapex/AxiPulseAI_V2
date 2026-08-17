@@ -48322,6 +48322,61 @@
       "transfer": 9.0,
       "operations_health": 94.44808753793407,
       "nps": 83.05
+    },
+    {
+      "date": "2026-08-18",
+      "type": "forecast",
+      "quality": 87.0,
+      "competency": 93.0,
+      "attendance": 90.0,
+      "release": 60.0,
+      "transfer": 9.0,
+      "operations_health": 94.42719076525925,
+      "nps": 82.26
+    },
+    {
+      "date": "2026-08-19",
+      "type": "forecast",
+      "quality": 87.0,
+      "competency": 93.0,
+      "attendance": 90.0,
+      "release": 60.0,
+      "transfer": 9.0,
+      "operations_health": 94.42719076525925,
+      "nps": 81.67
+    },
+    {
+      "date": "2026-08-20",
+      "type": "forecast",
+      "quality": 87.0,
+      "competency": 93.0,
+      "attendance": 90.0,
+      "release": 60.0,
+      "transfer": 9.0,
+      "operations_health": 94.42719076525925,
+      "nps": 81.67
+    },
+    {
+      "date": "2026-08-21",
+      "type": "forecast",
+      "quality": 87.0,
+      "competency": 93.0,
+      "attendance": 90.0,
+      "release": 60.0,
+      "transfer": 9.0,
+      "operations_health": 94.42719076525925,
+      "nps": 81.67
+    },
+    {
+      "date": "2026-08-22",
+      "type": "forecast",
+      "quality": 87.0,
+      "competency": 93.0,
+      "attendance": 90.0,
+      "release": 60.0,
+      "transfer": 9.0,
+      "operations_health": 94.42719076525925,
+      "nps": 81.67
     }
   ],
   "actual_history": [

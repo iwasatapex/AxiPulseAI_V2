@@ -40,7 +40,7 @@ from .preprocessing import (
     clip_outliers_iqr,
 )
 from .models import create_model_registry
-from .resource_guard import apply_final_cpu_config, guard_final_fit
+from .resource_guard import apply_final_cpu_config, guard_final_fit, final_fit_feasible
 from .constants import MODEL_VERSION
 from .metrics import compute_nps_error
 from ..common.temporal_dataset import shift_target_next_day, tail_by_distinct_dates
