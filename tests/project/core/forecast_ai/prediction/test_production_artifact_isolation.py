@@ -106,32 +106,85 @@ def test_api_nps_default_is_production_artifact():
 
 @pytest.mark.unit
 def test_api_default_is_not_stress_or_legacy():
-    """The API default must NOT be the stress-test or legacy artifact."""
-    from api.services import nps_service as ns
+    """The API default must be the CANONICAL production artifact — never the
+    legacy compatibility mirror and never a stress/test/candidate artifact.
 
-    # Actual artifact identity check, not just filename.
-    prod_hash = _sha256(MODELS / "production_NPS.pkl")
-    stress_hash = _sha256(MODELS / "stess_test_NPS.pkl")
-    legacy_hash = _sha256(MODELS / ns.NPS_LEGACY)
-    assert prod_hash != stress_hash, "production must differ from stress-test"
+    The old stress artifact (``stess_test_NPS.pkl``) was intentionally deleted
+    during the 100k-10yr production promotion, so isolation is proven via
+    canonical identity + active-manifest provenance + the authoritative
+    production-integrity verifier instead of byte-comparing a removed file.
+    """
+    from api.services import nps_service as ns
+    from core.forecast_ai.prediction import predictor_config as pc2
+
+    # 1. The API default IS the canonical production artifact name.
     assert os.path.basename(ns.DEFAULT_MODEL_PATH) == "production_NPS.pkl"
-    assert _sha256(MODELS / os.path.basename(ns.DEFAULT_MODEL_PATH)) == prod_hash
+
+    default = MODELS / os.path.basename(ns.DEFAULT_MODEL_PATH)
+    prod = MODELS / "production_NPS.pkl"
+
+    # 2. The default path resolves to the canonical production artifact bytes.
+    assert default.read_bytes() == prod.read_bytes()
+    assert _sha256(default) == _sha256(prod)
+
+    # 3. The authoritative production-integrity verifier accepts it:
+    #    hash, role=production, legacy unset, source set, trained, 34 in / 11 out.
+    pc2.verify_production_artifact(prod, is_oh=False)
+
+    # 4. Active-generation manifest provenance: production / 100k-10yr / not legacy.
+    manifest = json.loads(pr.manifest_path().read_text(encoding="utf-8"))
+    entry = manifest["production_NPS.pkl"]
+    assert entry["role"] == "production"
+    assert entry["source"] == "100k-10yr"
+    assert not entry.get("legacy")
+    assert entry["sha256"] == _sha256(prod)
+
+    # 5. The default must resolve inside the ACTIVE production generation —
+    #    it can never silently point at a stress/test/candidate artifact.
+    active = pr.active_generation_dir()
+    assert active is not None
+    assert str(default.resolve()).startswith(str(active))
+
+    # 6. Never the legacy compatibility mirror.
+    assert os.path.abspath(default) != os.path.abspath(MODELS / ns.NPS_LEGACY)
 
 
 @pytest.mark.unit
 def test_api_default_uses_production_not_legacy_content():
-    """The API default artifact's bytes must equal production_NPS.pkl, and
-    must NOT equal the stress-test artifact bytes.
+    """The API default artifact's bytes must equal the canonical
+    production_NPS.pkl artifact and the service must load that artifact.
 
-    NOTE: the legacy mirror may equal production (it is a compatibility mirror
-    of the production pair); the real isolation guarantee is that the default
-    is production and NEVER the stress/test model.
+    The legacy mirror may equal production (it is a compatibility mirror of
+    the production pair); the real isolation guarantee is that the default is
+    the canonical production model — never the deleted stress/test artifact.
     """
     from api.services import nps_service as ns
+    from core.forecast_ai.prediction import predictor_config as pc2
+    import joblib as _joblib
 
     default = MODELS / os.path.basename(ns.DEFAULT_MODEL_PATH)
-    assert default.read_bytes() == (MODELS / "production_NPS.pkl").read_bytes()
-    assert default.read_bytes() != (MODELS / "stess_test_NPS.pkl").read_bytes()
+    prod = MODELS / "production_NPS.pkl"
+    assert default.read_bytes() == prod.read_bytes()
+
+    # End-to-end: the API service actually loads the canonical production
+    # artifact and reports itself ready (fail-open would surface is_loaded
+    # False or a different model_path).
+    svc = ns.NPSService()
+    assert os.path.basename(svc.model_path) == "production_NPS.pkl"
+    assert svc.is_loaded() is True
+
+    # Authoritative production-integrity verification (hash/role/source/
+    # legacy/trained + 34-feature + 11-output structural contract).
+    pc2.verify_production_artifact(prod, is_oh=False)
+
+    # Explicit canonical artifact contract from the serialised bundle itself.
+    bundle = _joblib.load(str(prod))
+    assert bundle.get("trained") is True
+    assert bundle.get("model_name") == "XGBoost"
+    assert len(bundle.get("feature_names") or []) == 34
+    assert type(bundle.get("model")).__name__ == "MultiOutputRegressor"
+    assert int(bundle["model"].n_features_in_) == 34
+    assert int((bundle.get("metadata") or {}).get("num_scores")) == 11
 
 
 @pytest.mark.unit
