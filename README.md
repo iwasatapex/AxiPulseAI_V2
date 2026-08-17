@@ -29,7 +29,6 @@ The architecture is designed to prevent downstream predictions from being used t
 
 The central causal flow is:
 
-```text
 Call Volume
     ↓
 Base Operational State
