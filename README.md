@@ -955,7 +955,7 @@ Runtime:
 Python 3.13.15
 
 Production Source:
-1mil-10yr
+100k-10yr
 
 OH:
 CatBoost
