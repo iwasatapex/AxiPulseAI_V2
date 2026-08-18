@@ -36,7 +36,9 @@ Released Calls
     ↓
 Surveys
     ↓
-Promoters / Passives / Detractors
+0–10 Survey Scores
+    ↓
+Bayesian / Monte Carlo Survey-Score Analysis
     ↓
 NPS
     ↓
