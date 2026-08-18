@@ -18,3 +18,6 @@ monitoring/prometheus_api_token
 
 # Large training datasets
 training/1mil-10yr.csv
+
+# Generated CatBoost training artifacts
+catboost_info/
