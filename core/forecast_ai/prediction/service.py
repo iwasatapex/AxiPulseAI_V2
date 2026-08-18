@@ -309,34 +309,33 @@ class PredictionService:
         # Production path: use adapter rows.
         if self.oh is not None or self.nps is not None:
             errors = []
-            oh_score = nps_score = None
-
-            try:
-                oh_score = float(self.oh.predict(state))
-            except Exception as e:
-                errors.append(f"OH prediction error: {e}")
-
+            oh_score = None
             nps_result_data = {
                 "nps": None,
                 "bayesian_score_distribution": None,
                 "score_counts": None,
             }
 
-            try:
-                raw_nps_result = self.nps.predict(state)
-                nps_result_data = self._extract_nps_result(
-                    raw_nps_result
-                )
-            except Exception as e:
-                errors.append(f"NPS prediction error: {e}")
+            if self.oh is not None:
+                try:
+                    oh_score = float(self.oh.predict(state))
+                except Exception as e:
+                    errors.append(f"OH prediction error: {e}")
+
+            if self.nps is not None:
+                try:
+                    raw_nps_result = self.nps.predict(state)
+                    nps_result_data = self._extract_nps_result(
+                        raw_nps_result
+                    )
+                except Exception as e:
+                    errors.append(f"NPS prediction error: {e}")
 
             return PredictionResult(
                 operations_health=oh_score,
                 nps=nps_result_data["nps"],
                 bayesian_score_distribution=(
-                    nps_result_data[
-                        "bayesian_score_distribution"
-                    ]
+                    nps_result_data["bayesian_score_distribution"]
                 ),
                 score_counts=nps_result_data["score_counts"],
                 warnings=[],
