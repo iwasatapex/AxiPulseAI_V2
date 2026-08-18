@@ -152,8 +152,9 @@ integer survey-score counts
 Promoters / Passives / Detractors
   ↓
  NPS
+ ```
 
- ## NPS Contract
+## NPS Contract
 
 Production NPS uses an 11-output model representing scores `0` through `10`.
 
