@@ -49,8 +49,11 @@ def fallback_predict(predictor, row=None):
         "passives": passives,
         "detractors": detractors,
         "nps": nps,
-        "confidence": 50.0,
-        "prediction_interval": {"low": nps - 10, "high": nps + 10},
+        # Degraded mode (no model artifact / no 0..10 score distribution): there
+        # is no distribution-based Bayesian/Monte Carlo uncertainty source, so
+        # the interval is a point-only, zero-width band. It must NEVER fabricate
+        # a scalar-NPS ± confidence band.
+        "prediction_interval": {"low": float(nps), "high": float(nps)},
         "top_drivers": []
     }
 

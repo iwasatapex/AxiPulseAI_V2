@@ -29,6 +29,21 @@ class SensitivityAnalysis:
     confidence: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def improvement_direction(self) -> str:
+        """Operational direction that improves the KPI."""
+        return "decrease" if self.metric == "transfer" else "increase"
+
+    @property
+    def improvement_sensitivity_oh(self) -> float:
+        """
+        OH sensitivity in the KPI's operational improvement direction.
+
+        Raw sensitivity_score_oh remains dOH/dKPI and is never altered.
+        """
+        sign = -1.0 if self.metric == "transfer" else 1.0
+        return self.sensitivity_score_oh * sign
+
 @dataclass
 class SensitivityResult:
     success: bool

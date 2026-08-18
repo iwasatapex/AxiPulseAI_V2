@@ -839,7 +839,32 @@ def _build_sensitivity_detail(sensitivity_output: Mapping[str, Any] | None) -> d
                 if analysis.get("sensitivity_score_nps") is not None
                 else analysis.get("sensitivity_nps")
             )
-            direction = "increase" if (oh_change is not None and oh_change > 0) else ("decrease" if oh_change is not None else "unknown")
+            canonical_direction = (
+                "decrease"
+                if metric.lower() == "transfer"
+                else "increase"
+            )
+
+            # Raw model derivative: dOH / dKPI.
+            raw_sensitivity_oh = sens_oh
+
+            # Direction-aware operational sensitivity. This is a derived
+            # interpretation only; raw_sensitivity_oh is never modified.
+            improvement_sensitivity_oh = (
+                None
+                if raw_sensitivity_oh is None
+                else (
+                    -raw_sensitivity_oh
+                    if canonical_direction == "decrease"
+                    else raw_sensitivity_oh
+                )
+            )
+
+            model_conflict = (
+                improvement_sensitivity_oh is not None
+                and improvement_sensitivity_oh < 0.0
+            )
+
             if sens_oh is None:
                 rel_impact = "low"
             else:
@@ -854,18 +879,33 @@ def _build_sensitivity_detail(sensitivity_output: Mapping[str, Any] | None) -> d
                     rel_impact = "low"
                 else:
                     rel_impact = "negligible"
-            if oh_change is not None:
+
+            if improvement_sensitivity_oh is None:
+                interpretation = "Unknown impact"
+            elif model_conflict:
                 interpretation = (
-                    f"Increasing {metric} by 1pp "
-                    f"{'improves' if oh_change > 0 else 'reduces'} OH by {abs(oh_change):.3f}pp"
+                    f"Model conflict: the operationally beneficial direction "
+                    f"for {metric} is {canonical_direction}, but the model "
+                    f"predicts OH would decrease by "
+                    f"{abs(improvement_sensitivity_oh):.3f}pp per 1pp improvement"
                 )
             else:
-                interpretation = "Unknown impact"
+                interpretation = (
+                    f"Moving {metric} in the operationally beneficial "
+                    f"direction ({canonical_direction}) improves OH by "
+                    f"{improvement_sensitivity_oh:.3f}pp per 1pp"
+                )
+
             details.append({
                 "metric": metric,
                 "oh_change": oh_change,
                 "nps_change": nps_change,
+                # Backward-compatible raw experiment direction.
                 "direction": direction,
+                "improvement_direction": canonical_direction,
+                "raw_sensitivity_oh": raw_sensitivity_oh,
+                "improvement_sensitivity_oh": improvement_sensitivity_oh,
+                "model_conflict": model_conflict,
                 "relative_impact": rel_impact,
                 "interpretation": interpretation,
             })

@@ -106,6 +106,9 @@ def _best_kpi_gap(
             )
 
             if metric_name in actionable_kpis:
+                # Policy evidence retains the producer sensitivity score.
+                # Operational direction is applied only when naming the
+                # recommendation (transfer -> reduction).
                 scored.append(
                     (abs(float(score or 0.0)), metric_name)
                 )
