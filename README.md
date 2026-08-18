@@ -143,7 +143,7 @@ ML model
   ↓
 0–10 survey-score probability distribution
   ↓
-Bayesian posterior on the 0–10 score distribution
+Bayesian posterior on the 0–10 survey-score distribution
   ↓
 Monte Carlo / probabilistic analysis on survey scores
   ↓
