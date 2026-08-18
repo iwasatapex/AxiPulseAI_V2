@@ -287,9 +287,16 @@ class ProbabilisticDecisionService:
             "samples": int(getattr(bay, "samples", 0)),
         }
 
+        # The aggregate risk remains the raw probabilistic evidence.  When the
+        # policy layer abstains because there is no valid decision objective,
+        # expose that canonical state on the package without destroying the
+        # underlying risk evidence.
+        canonical_risk = decision.risk if decision.abstain else aggregate_risk.risk
+        canonical_abstain = bool(decision.abstain or aggregate_risk.abstain)
+
         return ProbabilisticDecisionPackage(
             recommendation=decision.recommendation,
-            risk=aggregate_risk.risk,
+            risk=canonical_risk,
             probability=probability,
             confidence=confidence,
             expected=expected,
@@ -297,7 +304,7 @@ class ProbabilisticDecisionService:
             upside=upside,
             scenarios=ranked,
             risk_score=aggregate_risk.score,
-            abstain=aggregate_risk.abstain,
+            abstain=canonical_abstain,
             success_count=success_count,
             failure_count=failure_count,
             decision=asdict(decision),

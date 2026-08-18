@@ -120,7 +120,9 @@ class ADIEV3Service:
             risk,
             targets=targets,
             aggregate=density,
-            observed=None,
+            # The normalized baseline is the explicit current-state
+            # comparator for the plain API path. It does not invent a target.
+            observed=(float(baseline) * 100.0),
         )
 
         explanation = {

@@ -71,18 +71,48 @@ def _best_kpi_gap(
         candidates.sort(key=lambda pair: -pair[1])
         return candidates[0][0]
 
+    # Sensitivity is genuine decision evidence when present. It may identify
+    # the KPI to prioritize even when no explicit numeric target is supplied.
     if sensitivity_output:
         ranking = sensitivity_output.get("ranking") or []
-        if ranking:
-            scored = []
-            for entry in ranking:
-                metric = entry.get("metric") if isinstance(entry, Mapping) else getattr(entry, "metric", None)
-                score = entry.get("sensitivity_score_oh") if isinstance(entry, Mapping) else getattr(entry, "sensitivity_score_oh", 0.0)
-                if metric:
-                    scored.append((abs(float(score or 0.0)), str(metric)))
-            if scored:
-                scored.sort(key=lambda pair: -pair[0])
-                return scored[0][1].strip().lower().replace(" ", "_")
+
+        # Only these KPIs may independently drive an actionable
+        # recommendation when there is no explicit numeric target.
+        actionable_kpis = {
+            "release",
+            "transfer",
+            "quality",
+            "competency",
+        }
+
+        scored = []
+        for entry in ranking:
+            metric = (
+                entry.get("metric")
+                if isinstance(entry, Mapping)
+                else getattr(entry, "metric", None)
+            )
+            score = (
+                entry.get("sensitivity_score_oh")
+                if isinstance(entry, Mapping)
+                else getattr(entry, "sensitivity_score_oh", 0.0)
+            )
+
+            metric_name = (
+                str(metric or "")
+                .strip()
+                .lower()
+                .replace(" ", "_")
+            )
+
+            if metric_name in actionable_kpis:
+                scored.append(
+                    (abs(float(score or 0.0)), metric_name)
+                )
+
+        if scored:
+            scored.sort(key=lambda pair: -pair[0])
+            return scored[0][1]
 
     return None
 
@@ -194,7 +224,24 @@ class DecisionPolicyEngine:
         recommendation for every input.
         """
         scenarios = list(scenarios or [])
-        if not scenarios or risk.abstain:
+
+        # Policy-level abstention: preserve the established defer
+        # recommendation. The canonical composer/evidence gate may later
+        # replace the actionable outward recommendation with "".
+        if not scenarios:
+            return PolicyDecision(
+                recommendation="defer_action_due_to_uncertainty",
+                action=C.DECISION_POLICY["abstain_action"],
+                priority=C.DECISION_POLICY["abstain_priority"],
+                risk="ABSTAIN",
+                confidence=risk.confidence,
+                abstain=True,
+                reason="insufficient evidence to make a decision",
+                direction="defer",
+                evidence=["no scenario evidence"],
+            )
+
+        if risk.abstain:
             return PolicyDecision(
                 recommendation="defer_action_due_to_uncertainty",
                 action=C.DECISION_POLICY["abstain_action"],
@@ -202,17 +249,9 @@ class DecisionPolicyEngine:
                 risk=risk.risk,
                 confidence=risk.confidence,
                 abstain=True,
-                reason=(
-                    "insufficient evidence to make a decision"
-                    if not scenarios
-                    else "risk model flagged abstain (insufficient confidence or no upside)"
-                ),
+                reason="risk model flagged abstain (insufficient confidence or no upside)",
                 direction="defer",
-                evidence=(
-                    ["no scenario evidence", "canonical risk model returned abstain"]
-                    if risk.abstain
-                    else ["no scenario evidence"]
-                ),
+                evidence=["canonical risk model returned abstain"],
             )
 
         best = _as_dict(scenarios[0])
@@ -255,6 +294,27 @@ class DecisionPolicyEngine:
                 f"{gap} identified as the priority from target gap / "
                 "sensitivity leverage on the best forecast scenario"
             )
+        elif sensitivity_output and gap is None:
+            # No explicit target and no actionable targetless sensitivity.
+            # Do not let the observed/generated-day comparison manufacture
+            # an actionable recommendation such as pursue_forecast_day_N.
+            return PolicyDecision(
+                recommendation="",
+                action=C.DECISION_POLICY["abstain_action"],
+                priority=C.DECISION_POLICY["abstain_priority"],
+                risk="ABSTAIN",
+                confidence=risk.confidence,
+                abstain=True,
+                reason=(
+                    "no target objective or actionable policy sensitivity "
+                    "evidence; insufficient evidence to decide"
+                ),
+                direction="defer",
+                evidence=[
+                    "no target objective",
+                    "no actionable policy sensitivity",
+                ],
+            )
         elif risk.risk == "HIGH":
             recommendation = "monitor_high_risk_forecast"
             direction = "observe"
@@ -263,7 +323,7 @@ class DecisionPolicyEngine:
                 "canonical risk is HIGH; keep the best forecast under "
                 "monitoring before executing"
             )
-        elif is_generated_day and observed is not None:
+        elif observed is not None:
             try:
                 observed_score = float(observed)
             except (TypeError, ValueError):
@@ -290,14 +350,25 @@ class DecisionPolicyEngine:
                     "observed state; recommend maintaining the current plan"
                 )
 
+        if risk.abstain:
+            # Keep the recommendation descriptive, but do not authorize it.
+            # This preserves useful policy diagnostics for explicit target
+            # objectives while the canonical action remains ABSTAIN.
+            action = C.DECISION_POLICY["abstain_action"]
+            priority = C.DECISION_POLICY["abstain_priority"]
+
         return PolicyDecision(
             recommendation=recommendation,
             action=action,
             priority=priority,
             risk=risk.risk,
             confidence=risk.confidence,
-            abstain=False,
-            reason=reason,
+            abstain=bool(risk.abstain),
+            reason=(
+                "risk model flagged abstain; recommendation is descriptive only"
+                if risk.abstain
+                else reason
+            ),
             affected_kpi=affected_kpi,
             direction=direction,
             evidence=[

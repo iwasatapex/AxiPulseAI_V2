@@ -293,12 +293,11 @@ def _build_top_recommendations(
 
     Never adds generic ``pursue_optimization`` just to reach 3.
 
-    When the decision evidence gate is insufficient the recommendation list is
-    empty — no recommendation is presented on missing evidence.
+    Forecast AI recommendations are preserved as advisory evidence even when
+    the canonical decision evidence gate is insufficient. The evidence gate
+    controls whether a canonical decision is actionable; it does not erase
+    genuine upstream recommendation evidence.
     """
-    if not evidence_sufficient:
-        return []
-
     recs = []
     targets = dict(targets or {})
     target_nps = targets.get("target_nps")
@@ -763,8 +762,9 @@ def _build_risk_detail(
     }
 
     if not evidence_sufficient:
-        # Raw inputs kept as diagnostic metadata only — NOT a valid canonical
-        # risk decision. The canonical level is ABSTAIN with abstain=True.
+        # Canonical decision surface is ABSTAIN. Raw probabilistic risk is
+        # retained only under ``raw`` for diagnostics.
+        raw_level = package.get("risk")
         return {
             "level": "ABSTAIN",
             "abstain": True,
@@ -776,6 +776,7 @@ def _build_risk_detail(
                 "status": DECISION_STATUS_INSUFFICIENT,
             },
             "raw": {
+                "level": raw_level,
                 "score": _round(package.get("risk_score")),
                 "confidence": _round(package.get("confidence")),
                 "downside": _round(downside),
@@ -1002,16 +1003,19 @@ def _enhance_explanation(
             "actionable": False,
             "reason": evidence_reason or "Decision evidence is insufficient",
         }
-        enhanced["main_risk"] = {
-            "level": "ABSTAIN",
-            "score": None,
-            "confidence": None,
-            "downside": None,
-            "upside": None,
-            "abstain": True,
-            "status": DECISION_STATUS_INSUFFICIENT,
-            "reason": evidence_reason or "Decision evidence is insufficient",
-        }
+        # Preserve the original explanation's main_risk fields (especially
+        # diagnostic drivers) while making the canonical decision state
+        # explicit.  Do not destroy an existing driver/level just because the
+        # actionable decision is being withheld.
+        existing_main_risk = dict(enhanced.get("main_risk") or {})
+        existing_main_risk["abstain"] = True
+        existing_main_risk["status"] = DECISION_STATUS_INSUFFICIENT
+        existing_main_risk["reason"] = (
+            evidence_reason or "Decision evidence is insufficient"
+        )
+        existing_main_risk["level"] = "ABSTAIN"
+        existing_main_risk["canonical_level"] = "ABSTAIN"
+        enhanced["main_risk"] = existing_main_risk
         enhanced["recommended_action"] = {
             "recommendation": None,
             "action": "withheld",
@@ -1029,9 +1033,4 @@ def _enhance_explanation(
     return enhanced
 
 
-__all__ = [
-    "build_adie_detail",
-    "decision_evidence_sufficient",
-    "DECISION_STATUS_AVAILABLE",
-    "DECISION_STATUS_INSUFFICIENT",
-]
+__all__ = ["build_adie_detail"]

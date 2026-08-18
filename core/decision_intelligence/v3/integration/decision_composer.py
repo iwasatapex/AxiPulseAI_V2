@@ -20,6 +20,8 @@ predictive models.
 
 from __future__ import annotations
 
+import copy
+
 from typing import Any, Mapping, Sequence
 
 from core.decision_intelligence.v3.synthesis.decision_detail import (
@@ -56,6 +58,10 @@ def compose_decision_package(
     NEW: When called with forecast outputs, also builds the enriched
     ADIE detail via build_adie_detail() and attaches it under 'details'.
     """
+    # Keep the producer package intact internally, but expose a canonical
+    # decision view that is explicitly ABSTAIN when recommendation/agreement
+    # evidence is insufficient. This prevents LOW/MEDIUM raw risk from being
+    # mistaken for an actionable decision.
     package: dict[str, Any] = {
         "probabilistic": dict(probabilistic),
     }
@@ -80,10 +86,16 @@ def compose_decision_package(
         sensitivity_output,
         agreement,
     ])
+    # Preserve the untouched probabilistic evidence for ADIE detail.
+    # The canonical outward decision surface may be gated to ABSTAIN later,
+    # but ADIE must retain the underlying Bayesian/Monte Carlo evidence,
+    # risk drivers, recommendation evidence, and explanation fields.
+    probabilistic_detail_source = copy.deepcopy(probabilistic)
+
     if has_forecast_output:
         try:
             detail = build_adie_detail(
-                probabilistic,
+                probabilistic_detail_source,
                 recommendation_output=recommendation_output,
                 strategy_output=strategy_output,
                 trend_output=trend_output,
@@ -104,25 +116,40 @@ def compose_decision_package(
     # is not met the canonical decision is withheld (risk = ABSTAIN,
     # abstain = True) even though forecast outlook + scenario ranking remain
     # available.
-    sufficient, _reason = decision_evidence_sufficient(recommendation_output, agreement)
+    sufficient, _reason = decision_evidence_sufficient(
+        recommendation_output, agreement
+    )
     if sufficient:
         package["decision_status"] = DECISION_STATUS_AVAILABLE
         package["recommendation_status"] = DECISION_STATUS_AVAILABLE
     else:
         package["decision_status"] = DECISION_STATUS_INSUFFICIENT
         package["recommendation_status"] = DECISION_STATUS_INSUFFICIENT
-        # Override the probabilistic surface used by the GUI Executive Decision
-        # and API consumers so they never present a normal LOW/MEDIUM/HIGH
-        # canonical risk decision or an actionable recommendation on missing
-        # decision evidence. Raw inputs stay in ``details.risk_detail.raw``.
-        prob = package.get("probabilistic")
-        if isinstance(prob, dict):
-            prob["risk"] = "ABSTAIN"
-            prob["abstain"] = True
-            prob["decision_status"] = DECISION_STATUS_INSUFFICIENT
-            prob["recommendation_status"] = DECISION_STATUS_INSUFFICIENT
-            prob["recommendation"] = ""  # no actionable recommendation
-            prob["recommendation_actionable"] = False
+
+        # Canonical outward decision must abstain when recommendation and
+        # agreement evidence are insufficient. Preserve the producer's raw
+        # Bayesian/Monte-Carlo evidence in ``details``; only the canonical
+        # decision surface is gated.
+        gated = dict(package["probabilistic"])
+        gated["recommendation"] = ""
+        gated["recommendation_status"] = DECISION_STATUS_INSUFFICIENT
+        gated["risk"] = "ABSTAIN"
+        gated["abstain"] = True
+
+        decision = dict(gated.get("decision") or {})
+        decision["recommendation"] = ""
+        decision["recommendation_status"] = DECISION_STATUS_INSUFFICIENT
+        decision["risk"] = "ABSTAIN"
+        decision["abstain"] = True
+        decision["action"] = "abstain"
+        decision["priority"] = "LOW"
+        decision["direction"] = "defer"
+        decision["reason"] = (
+            "recommendation/agreement evidence is insufficient; "
+            "canonical decision withheld"
+        )
+        gated["decision"] = decision
+        package["probabilistic"] = gated
 
     return package
 
