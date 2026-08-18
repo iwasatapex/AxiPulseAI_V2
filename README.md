@@ -152,7 +152,7 @@ integer survey-score counts
 Promoters / Passives / Detractors
   ↓
  NPS
- ```
+ ```text
 
 ## NPS Contract
 
