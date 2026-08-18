@@ -27,6 +27,13 @@ class SensitivityAnalysis:
     rank: int = 0
     classification: str = "Medium"    # Very High, High, Medium, Low, Negligible
     confidence: float = 0.0
+    # Confidence is a heuristic consistency signal, NOT a statistical measure.
+    # confidence_type makes that explicit:
+    #   "heuristic_consistency"      -> both + and - directions present, value
+    #                                   derived from directional consistency
+    #   "heuristic_single_direction" -> only one direction available
+    #   "none"                       -> no usable sensitivity evidence
+    confidence_type: str = "none"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property

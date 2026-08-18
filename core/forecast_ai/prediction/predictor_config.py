@@ -175,21 +175,28 @@ def verify_production_artifact(
         )
 
     # Feature schema / order: if the manifest records the exact names, the
-    # artifact must match.
+    # artifact must match. This is a hard fail-closed check: an exact
+    # feature-name/order mismatch or malformed schema metadata must never be
+    # silently accepted as a valid production artifact.
     manifest_feature_meta = entry.get("feature_metadata")
     if manifest_feature_meta:
         try:
             recorded = json.loads(manifest_feature_meta)
-            if isinstance(recorded, list) and feature_names:
-                if list(recorded) != list(feature_names):
-                    raise ProductionIntegrityError(
-                        f"Production artifact {artifact_name} feature schema "
-                        f"does not match manifest; refusing."
-                    )
-        except Exception:
-            # Feature schema comparison is advisory when the manifest stores a
-            # non-list form; structural checks above remain authoritative.
-            pass
+        except Exception as exc:
+            raise ProductionIntegrityError(
+                f"Production artifact {artifact_name} has malformed feature "
+                f"schema metadata in manifest; refusing."
+            ) from exc
+        if not isinstance(recorded, list):
+            raise ProductionIntegrityError(
+                f"Production artifact {artifact_name} feature schema metadata "
+                f"is not a list in manifest; refusing."
+            )
+        if feature_names and list(recorded) != list(feature_names):
+            raise ProductionIntegrityError(
+                f"Production artifact {artifact_name} feature schema/order "
+                f"does not match manifest; refusing."
+            )
 
 
 def _const_eq(a: str, b: str) -> bool:

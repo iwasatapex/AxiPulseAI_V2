@@ -78,6 +78,37 @@ DECISION_STATUS_AVAILABLE = "available"
 DECISION_STATUS_INSUFFICIENT = "insufficient_evidence"
 
 
+def recommendation_is_best_effort(
+    recommendation_output: Mapping[str, Any] | None,
+) -> bool:
+    """Return True when recommendation evidence is advisory best-effort.
+
+    A best-effort recommendation is produced when the optimizer preserved a
+    genuinely improving candidate on timeout or when the target was NOT
+    achieved. It is real producer evidence that may be kept in audit/detail
+    views and MUST remain explicitly marked ``best_effort=true``, but it MUST
+    NOT silently satisfy the canonical ACTIONABLE evidence gate.
+
+    Detection reads the producer's own markers: the top-level ``metadata``
+    (``best_effort`` / ``reason == "best_effort"`` / ``goal_achieved == False``)
+    and the per-recommendation ``metadata``.
+    """
+    if not recommendation_output:
+        return False
+    meta = recommendation_output.get("metadata") or {}
+    if meta.get("best_effort") is True:
+        return True
+    if meta.get("reason") == "best_effort":
+        return True
+    if meta.get("goal_achieved") is False:
+        return True
+    for rec in canonical_recommendation_list(recommendation_output):
+        rmeta = rec.get("metadata") or {}
+        if rmeta.get("best_effort") is True or rmeta.get("goal_achieved") is False:
+            return True
+    return False
+
+
 def decision_evidence_sufficient(
     recommendation_output: Mapping[str, Any] | None,
     agreement: Mapping[str, Any] | None,
@@ -104,6 +135,16 @@ def decision_evidence_sufficient(
 
     if agreement is None:
         return False, "No recommendation evidence to compute agreement/consistency."
+
+    # Best-effort / target-not-achieved advisory evidence MUST NOT satisfy the
+    # canonical ACTIONABLE gate on its own. The raw producer evidence remains
+    # preserved for audit/detail; only the canonical decision is withheld.
+    if recommendation_is_best_effort(recommendation_output):
+        return (
+            False,
+            "Recommendation evidence is best-effort advisory (target not "
+            "achieved); canonical actionable evidence gate not met.",
+        )
 
     score = agreement.get("score")
     consistency = agreement.get("category_consistency")
@@ -341,6 +382,11 @@ def _build_top_recommendations(
                 "confidence": _round(conf),
                 "risk": _assess_risk(prob, conf) if _finite(prob) and _finite(conf) else "MEDIUM",
                 "evidence": r.get("reasoning") or r.get("actions", []),
+                # Preserve producer metadata (best_effort / goal_achieved) so a
+                # best-effort advisory recommendation stays explicitly marked
+                # in audit/detail and is never mistaken for target-achieved
+                # actionable evidence.
+                "metadata": dict(r.get("metadata") or {}),
             })
             if len(recs) >= 3:
                 break
@@ -839,11 +885,15 @@ def _build_sensitivity_detail(sensitivity_output: Mapping[str, Any] | None) -> d
                 if analysis.get("sensitivity_score_nps") is not None
                 else analysis.get("sensitivity_nps")
             )
+            # Raw model direction comes from the raw derivative dOH/dKPI,
+            # not from the averaged experiment output change. The latter can
+            # have a different sign when +delta and -delta experiments are
+            # aggregated.
             raw_direction = (
                 "increase"
-                if oh_change is not None and oh_change > 0
+                if sens_oh is not None and sens_oh > 0
                 else "decrease"
-                if oh_change is not None
+                if sens_oh is not None
                 else "unknown"
             )
 

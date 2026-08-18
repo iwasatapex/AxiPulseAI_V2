@@ -71,3 +71,54 @@ def test_explanation_preserves_existing_main_risk_fields():
     assert result["main_risk"]["canonical_level"] == "ABSTAIN"
     assert result["main_risk"]["abstain"] is True
     assert result["decision_status"] == "insufficient_evidence"
+
+
+def test_sensitivity_detail_direction_uses_raw_derivative():
+    from core.decision_intelligence.v3.synthesis.decision_detail import (
+        _build_sensitivity_detail,
+    )
+
+    detail = _build_sensitivity_detail(
+        {
+            "analyses": [
+                {
+                    "metric": "competency",
+                    "oh_change": -0.1524,
+                    "sensitivity_score_oh": 0.6988,
+                    "sensitivity_score_nps": 0.0,
+                },
+                {
+                    "metric": "transfer",
+                    "oh_change": 0.1962,
+                    "sensitivity_score_oh": -0.2109,
+                    "sensitivity_score_nps": -0.805,
+                },
+                {
+                    "metric": "attendance",
+                    "oh_change": -0.1227,
+                    "sensitivity_score_oh": -0.0718,
+                    "sensitivity_score_nps": 0.0,
+                },
+            ],
+            "ranking": [],
+        }
+    )
+
+    by_metric = {item["metric"]: item for item in detail["metrics"]}
+
+    # Raw model derivative says increasing competency improves OH.
+    assert by_metric["competency"]["direction"] == "increase"
+    assert by_metric["competency"]["improvement_direction"] == "increase"
+    assert by_metric["competency"]["model_conflict"] is False
+
+    # Raw model derivative says increasing transfer reduces OH, and
+    # operational improvement is also to decrease transfer.
+    assert by_metric["transfer"]["direction"] == "decrease"
+    assert by_metric["transfer"]["improvement_direction"] == "decrease"
+    assert by_metric["transfer"]["model_conflict"] is False
+
+    # Attendance is a genuine model conflict: operational improvement is
+    # increase, but the raw derivative says OH decreases.
+    assert by_metric["attendance"]["direction"] == "decrease"
+    assert by_metric["attendance"]["improvement_direction"] == "increase"
+    assert by_metric["attendance"]["model_conflict"] is True

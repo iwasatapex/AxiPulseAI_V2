@@ -8,7 +8,12 @@ from dataclasses import asdict
 
 from ..base_engine import ForecastAIEngine
 from ..models import ForecastRequest, ForecastResponse
-from ..optimization import OptimizationRequest, TargetGoal, Constraint
+from ..optimization import (
+    OptimizationRequest,
+    TargetGoal,
+    Constraint,
+    ConstraintType,
+)
 from ..optimization import ReverseOptimizer as OptimizerCore
 from ..recommendations import RecommendationEngine as RecEngine, RecommendationResult
 

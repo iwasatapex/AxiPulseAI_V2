@@ -71,7 +71,7 @@ Source: 1mil-10yr
 Final production verification:
 
 ```text
-Full pytest suite: 701 passed, 0 skipped
+Full pytest suite: 722 passed, 0 skipped
 OH production inference: 93.03606462275141
 NPS production inference: 84.0
 NPS outputs: 11
@@ -652,7 +652,7 @@ Important behavioral test areas:
 Final Python 3.13 release result:
 
 ```text
-701 passed
+722 passed
 0 skipped
 ```
 
@@ -950,7 +950,7 @@ These are documented resource-governance improvements and are not release-blocki
 [x] Real artifact inference verified
 [x] Persistence/reload verified
 [x] Python 3.13.15 compatibility verified
-[x] Full test suite: 701 passed / 0 skipped
+[x] Full test suite: 722 passed / 0 skipped
 [x] py_compile clean
 [x] Final backup created
 [x] Large training CSV excluded from Git
@@ -993,7 +993,7 @@ XGBoost
 NPS = 84.0
 
 Tests:
-701 passed
+722 passed
 0 skipped
 
 Production:

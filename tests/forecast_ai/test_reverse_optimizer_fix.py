@@ -208,3 +208,84 @@ def test_state_immutability():
     state_before = deepcopy(BASE)
     res = _run(opt, target)
     assert BASE == state_before  # caller state untouched
+
+
+# --------------------------------------------------------------------------- #
+# P1-B: recommendation engine must not fail with NameError on constraints
+# --------------------------------------------------------------------------- #
+def test_recommendation_engine_handles_constraint_without_nameerror():
+    """A recommendation request containing a constraint must run the
+    ConstraintType(...) construction path without raising NameError."""
+    from core.forecast_ai.models import ForecastRequest as FR
+
+    service = PredictionService(oh_predictor=MonotonicOH(), nps_predictor=MonotonicNPS())
+    engine = EngineRecEngine(optimizer_core=ReverseOptimizer(prediction_service=service))
+    resp = engine.execute(FR(operation="recommend", parameters={
+        "state": dict(BASE),
+        "target_oh": 95.0,
+        "max_iterations": 40,
+        "timeout_seconds": 40,
+        "constraints": [
+            {"field": "quality", "type": "max", "value": 80.0},
+            {"field": "transfer", "type": "min", "value": 5.0},
+        ],
+    }))
+    # The constraint path is exercised; no NameError is acceptable.
+    assert isinstance(resp.success, bool)
+
+
+# --------------------------------------------------------------------------- #
+# P0-A: BEST-EFFORT MUST NEVER BECOME CANONICAL ACTIONABLE (timeout cases)
+# --------------------------------------------------------------------------- #
+def _optimization_result(success, best_effort):
+    """Deterministic OptimizationResult with a genuine improving candidate."""
+    from core.forecast_ai.optimization import OptimizationSolution, OptimizationResult
+
+    solution = OptimizationSolution(
+        predicted_operations_health=95.0,
+        predicted_nps=80.0,
+        state_changes={"quality": 10.0, "competency": 5.0},
+        optimization_score=0.2,
+        distance_to_target=0.0 if success else 5.0,
+        iterations_used=1,
+        state=dict(BASE),
+    )
+    return OptimizationResult(
+        success=success,
+        solutions=[solution],
+        best_solution=solution,
+        warnings=[],
+        errors=[],
+        metadata={
+            "timed_out": True,
+            "target_achieved": success,
+            "best_effort": best_effort,
+        },
+    )
+
+
+def test_timeout_no_improvement_produces_no_recommendation():
+    """timeout + no improvement -> no recommendation (abstain downstream)."""
+    from core.forecast_ai.recommendations import RecommendationEngine
+
+    # timed out with NO genuine improving candidate (best_effort=False).
+    result = _optimization_result(success=False, best_effort=False)
+    rec = RecommendationEngine().generate(result)
+    assert rec.success is False
+    assert rec.recommendations == []
+
+
+def test_timeout_genuine_improving_candidate_preserved_as_best_effort():
+    """timeout + genuine improving candidate -> best_effort recommendation is
+    preserved and explicitly marked (never reported as achieved)."""
+    from core.forecast_ai.recommendations import RecommendationEngine
+
+    result = _optimization_result(success=False, best_effort=True)
+    rec = RecommendationEngine().generate(result)
+    assert rec.success is True
+    assert rec.metadata.get("goal_achieved") is False
+    assert rec.metadata.get("best_effort") is True
+    assert len(rec.recommendations) >= 1
+    for r in rec.recommendations:
+        assert r.metadata.get("goal_achieved") is False
+        assert r.metadata.get("best_effort") is True

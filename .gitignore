@@ -16,6 +16,9 @@ models/*.pkl
 models/*.joblib
 monitoring/prometheus_api_token
 
+# Runtime / generated state (not versioned; would otherwise dirty source control)
+data/forecast_history.json
+
 # Large training datasets
 training/1mil-10yr.csv
 

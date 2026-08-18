@@ -359,3 +359,132 @@ def test_composer_normal_flow_when_sufficient():
     assert pkg["details"]["decision_status"] == "available"
     assert len(pkg["details"]["recommendations"]) == 1
 
+
+# --------------------------------------------------------------------------- #
+# P0-A: BEST-EFFORT MUST NEVER BECOME CANONICAL ACTIONABLE
+# --------------------------------------------------------------------------- #
+def _best_effort_recommendation_output():
+    """A genuine advisory recommendation produced when the optimizer preserved
+    an improving candidate on timeout (best_effort=true, goal_achieved=false)."""
+    return {
+        "status": "success",
+        "success": True,
+        "recommendations": [
+            {
+                "title": "Raise quality toward target (best-effort)",
+                "target_kpi": "quality",
+                "direction": "increase",
+                "priority": "high",
+                "confidence": 0.8,
+                "reasoning": "genuine improving candidate preserved on timeout",
+                "metadata": {"best_effort": True, "goal_achieved": False},
+            },
+        ],
+        "metadata": {
+            "best_effort": True,
+            "goal_achieved": False,
+            "reason": "best_effort",
+        },
+    }
+
+
+def test_best_effort_recommendation_alone_is_not_canonical_actionable():
+    """A best-effort advisory recommendation must NOT satisfy the canonical
+    actionable evidence gate, even though genuine rec + agreement evidence are
+    present. The canonical decision must abstain."""
+    sufficient, reason = decision_evidence_sufficient(
+        _best_effort_recommendation_output(),
+        _agreement(),
+    )
+    assert sufficient is False
+    assert "best-effort" in reason
+
+    detail = build_adie_detail(
+        _package(risk="LOW", abstain=False),
+        recommendation_output=_best_effort_recommendation_output(),
+        agreement=_agreement(),
+        horizon=3,
+    )
+    assert detail["decision_status"] == DECISION_STATUS_INSUFFICIENT
+    assert detail["recommendation_status"] == DECISION_STATUS_INSUFFICIENT
+    assert detail["risk_detail"]["level"] == "ABSTAIN"
+    assert detail["risk_detail"]["abstain"] is True
+
+
+def test_best_effort_recommendation_preserved_in_detail():
+    """The underlying best-effort recommendation evidence must be preserved for
+    audit/detail even though the canonical decision abstains. It must remain
+    explicitly marked best_effort=true."""
+    detail = build_adie_detail(
+        _package(risk="LOW", abstain=False),
+        recommendation_output=_best_effort_recommendation_output(),
+        agreement=_agreement(),
+        horizon=3,
+    )
+    assert detail["decision_status"] == DECISION_STATUS_INSUFFICIENT
+    recs = detail["recommendations"]
+    assert len(recs) == 1
+    assert recs[0]["metadata"].get("best_effort") is True
+    assert recs[0]["metadata"].get("goal_achieved") is False
+    # The advisory rec is still surfaced (not destroyed).
+    assert recs[0]["action"]
+
+
+def test_composer_abstains_on_best_effort_but_preserves_producer_evidence():
+    """Composer-level: a best-effort recommendation yields an ABSTAIN canonical
+    decision (risk=ABSTAIN, abstain=true, recommendation="") while the detail
+    still exposes the advisory producer evidence."""
+    from core.decision_intelligence.v3.integration.decision_composer import (
+        compose_decision_package,
+    )
+
+    pkg = compose_decision_package(
+        _package(risk="LOW", abstain=False),
+        recommendation_output=_best_effort_recommendation_output(),
+        agreement=_agreement(),
+        targets={},
+        observed=80.0,
+        observed_metrics=["operations_health"],
+        horizon=3,
+    )
+    assert pkg["decision_status"] == DECISION_STATUS_INSUFFICIENT
+    prob = pkg["probabilistic"]
+    assert prob["risk"] == "ABSTAIN"
+    assert prob["abstain"] is True
+    assert prob["recommendation_status"] == DECISION_STATUS_INSUFFICIENT
+    # Raw producer evidence preserved in details.
+    assert len(pkg["details"]["recommendations"]) == 1
+    assert pkg["details"]["recommendations"][0]["metadata"].get("best_effort") is True
+
+
+def test_fully_achieved_recommendation_remains_actionable():
+    """A valid fully achieved recommendation (best_effort=false,
+    goal_achieved=true) must remain actionable."""
+    achieved = {
+        "status": "success",
+        "success": True,
+        "recommendations": [
+            {
+                "title": "Raise quality",
+                "target_kpi": "quality",
+                "direction": "increase",
+                "priority": "high",
+                "confidence": 0.8,
+                "metadata": {"best_effort": False, "goal_achieved": True},
+            },
+        ],
+        "metadata": {"best_effort": False, "goal_achieved": True},
+    }
+    sufficient, _reason = decision_evidence_sufficient(achieved, _agreement())
+    assert sufficient is True
+
+    detail = build_adie_detail(
+        _package(risk="LOW", abstain=False),
+        recommendation_output=achieved,
+        agreement=_agreement(),
+        horizon=3,
+    )
+    assert detail["decision_status"] == "available"
+    assert detail["risk_detail"]["level"] == "LOW"
+    assert detail["risk_detail"]["abstain"] is False
+

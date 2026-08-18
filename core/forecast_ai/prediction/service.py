@@ -486,13 +486,17 @@ class PredictionService:
             ]
             aligned_df = pd.concat(aligned, axis=0, ignore_index=True)
 
-            raw_model = nps_predictor.model
-            raw_preds = raw_model.predict(aligned_df)  # shape (n_rows, 11)
-
-            from core.nps_predictor.inference import postprocess_predictions
+            # Reuse the SAME canonical vector construction as single prediction
+            # (predict_single) so batch NPS semantics == single NPS semantics:
+            # the selected model OR the persisted weighted ensemble is applied
+            # identically, and no probabilistic logic is duplicated here.
+            from core.nps_predictor.inference import (
+                predict_single_vector,
+                postprocess_predictions,
+            )
 
             for i, row in enumerate(rows):
-                pred = raw_preds[i]
+                pred = predict_single_vector(nps_predictor, aligned_df.iloc[[i]])
                 post = postprocess_predictions(pred, nps_rows[i])
                 extracted = self._extract_nps_result(post)
                 results.append({

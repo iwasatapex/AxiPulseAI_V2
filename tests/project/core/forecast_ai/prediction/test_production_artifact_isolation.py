@@ -574,3 +574,82 @@ def test_relink_failure_keeps_previous_generation(isolated_models_dir, monkeypat
     assert after["oh"] == before["oh"]
     assert after["nps"] == before["nps"]
     assert after["manifest"] == before["manifest"]
+
+
+# =====================================================================
+# P0-B: PRODUCTION MODEL SCHEMA INTEGRITY MUST FAIL CLOSED
+# =====================================================================
+
+def _write_oh_artifact_with_features(models_dir, feature_names):
+    """Write a loadable OH production artifact carrying the given features."""
+    import joblib as _joblib
+    from tests.project.core.forecast_ai.prediction.test_production_lifecycle import (
+        _FakeEstimator,
+    )
+    path = models_dir / "production_OH.pkl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _joblib.dump(
+        {
+            "model_name": "XGBoost",
+            "trained": True,
+            "feature_names": feature_names,
+            "model": _FakeEstimator(),
+            "metadata": {"training_rows": 100},
+        },
+        str(path),
+    )
+    return path
+
+
+def _manifest_with_feature_meta(models_dir, feature_metadata):
+    """Write a manifest entry whose feature_metadata is ``feature_metadata``
+    (already JSON-encoded as the real registry does)."""
+    oh = models_dir / "production_OH.pkl"
+    entry = {
+        "production_OH.pkl": {
+            "sha256": _sha256(oh),
+            "source": "100k-10yr",
+            "role": "production",
+            "n_features_in": 3,
+            "n_outputs": 1,
+            "feature_metadata": feature_metadata,
+        },
+    }
+    (models_dir / pr.MANIFEST_NAME).write_text(json.dumps(entry), encoding="utf-8")
+
+
+def test_valid_artifact_with_matching_schema_passes(isolated_models_dir):
+    """A valid artifact whose feature names/order match the manifest passes."""
+    _write_oh_artifact_with_features(isolated_models_dir, ["f1", "f2", "f3"])
+    _manifest_with_feature_meta(
+        isolated_models_dir, json.dumps(["f1", "f2", "f3"])
+    )
+    pc.verify_production_artifact(isolated_models_dir / "production_OH.pkl", is_oh=True)
+
+
+def test_feature_name_mismatch_fails_closed(isolated_models_dir):
+    """An artifact whose feature NAMES differ from the manifest must fail."""
+    _write_oh_artifact_with_features(isolated_models_dir, ["f1", "f2", "f3"])
+    _manifest_with_feature_meta(
+        isolated_models_dir, json.dumps(["f1", "f2", "different"])
+    )
+    with pytest.raises(Exception, match="schema|refusing"):
+        pc.verify_production_artifact(isolated_models_dir / "production_OH.pkl", is_oh=True)
+
+
+def test_feature_order_mismatch_fails_closed(isolated_models_dir):
+    """An artifact whose feature ORDER differs from the manifest must fail."""
+    _write_oh_artifact_with_features(isolated_models_dir, ["f1", "f2", "f3"])
+    _manifest_with_feature_meta(
+        isolated_models_dir, json.dumps(["f3", "f2", "f1"])
+    )
+    with pytest.raises(Exception, match="schema|refusing"):
+        pc.verify_production_artifact(isolated_models_dir / "production_OH.pkl", is_oh=True)
+
+
+def test_malformed_schema_metadata_fails_closed(isolated_models_dir):
+    """Malformed feature schema metadata in the manifest must fail closed."""
+    _write_oh_artifact_with_features(isolated_models_dir, ["f1", "f2", "f3"])
+    _manifest_with_feature_meta(isolated_models_dir, "{ not valid json !!!")
+    with pytest.raises(Exception, match="malformed|refusing"):
+        pc.verify_production_artifact(isolated_models_dir / "production_OH.pkl", is_oh=True)

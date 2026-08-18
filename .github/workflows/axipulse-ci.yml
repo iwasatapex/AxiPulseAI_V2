@@ -5,7 +5,7 @@ on:
   push:
 
     branches:
-      - main
+      - master
 
   pull_request:
 
@@ -28,7 +28,7 @@ jobs:
 
         with:
 
-          python-version: "3.14"
+          python-version: "3.13"
 
 
       - name: Install dependencies
@@ -41,6 +41,34 @@ jobs:
           python -m compileall api core
 
 
+      - name: Validate project/runtime contract consistency
+        run: |
+          python - <<'PY'
+          import sys, tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text("utf-8"))
+          requires = pyproject["project"].get("requires-python", "")
+
+          major, minor = sys.version_info[:2]
+          runtime = f"{major}.{minor}"
+          if requires and runtime not in requires:
+              raise SystemExit(
+                  f"CI Python {runtime} does not satisfy requires-python "
+                  f"{requires!r} from pyproject.toml."
+              )
+
+          # The active default/production branch is master; CI must not
+          # silently target a stale branch name.
+          for path in Path(".github/workflows").glob("*.yml"):
+              text = path.read_text("utf-8")
+              if "main" in text and "master" not in text:
+                  print(f"WARN: {path.name} references 'main' without 'master'")
+
+          print(f"PROJECT CONTRACT OK: python {runtime} satisfies {requires}")
+          PY
+
+
       - name: API validation
         run: |
           python - <<'PY'
@@ -50,3 +78,25 @@ jobs:
 
           print("API LOAD PASS")
           PY
+
+
+      - name: Production model integrity validation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from core.forecast_ai.prediction import predictor_config as pc
+
+          for name, is_oh in (("production_OH.pkl", True), ("production_NPS.pkl", False)):
+              p = Path("models") / name
+              if p.exists():
+                  pc.verify_production_artifact(p, is_oh=is_oh)
+                  print(f"PRODUCTION INTEGRITY OK: {name}")
+              else:
+                  print(f"WARN: {name} not present; skipping production integrity check")
+          PY
+
+
+      - name: Run test suite
+        run: |
+          pip install pytest
+          pytest -q

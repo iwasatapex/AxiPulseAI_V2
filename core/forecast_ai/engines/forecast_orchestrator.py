@@ -331,6 +331,19 @@ class ForecastOrchestrator(ForecastAIEngine):
         end_time = datetime.datetime.now()
         duration_sec = (end_time - start_time).total_seconds()
 
+        completed_days = len(
+            [d for d in timeline if d.operations_health is not None]
+        )
+        # Truthful completion semantics: a forecast is only fully successful
+        # when every day was predicted with no fatal prediction error. A partial
+        # or failed forecast must not be reported as a clean success even though
+        # the service kept running and preserved placeholder/error evidence.
+        if errors:
+            forecast_status = "partial" if completed_days > 0 else "failed"
+        else:
+            forecast_status = "completed"
+        forecast_success = forecast_status == "completed"
+
         result = ForecastResult(
             horizon=horizon,
             scenario=request.scenario or "baseline",
@@ -342,8 +355,9 @@ class ForecastOrchestrator(ForecastAIEngine):
             timeline=timeline,
             summary={
                 "total_days": horizon,
-                "completed_days": len([d for d in timeline if d.operations_health is not None]),
-                "execution_duration_sec": duration_sec
+                "completed_days": completed_days,
+                "execution_duration_sec": duration_sec,
+                "status": forecast_status,
             }
         )
 
@@ -363,7 +377,7 @@ class ForecastOrchestrator(ForecastAIEngine):
             v3_decision = {"status": "error", "error": str(exc)}
 
         return ForecastResponse(
-            success=True,
+            success=forecast_success,
             operation="forecast",
             engine="ForecastOrchestrator",
             timestamp=datetime.datetime.now().isoformat(),
@@ -372,7 +386,8 @@ class ForecastOrchestrator(ForecastAIEngine):
             metadata={
                 "phase": "6",
                 "horizon": horizon,
-                "duration_sec": duration_sec
+                "duration_sec": duration_sec,
+                "status": forecast_status,
             },
             payload={
                   "decision_intelligence": v3_decision,
@@ -883,7 +898,13 @@ class ForecastOrchestrator(ForecastAIEngine):
             for key in ("_predicted", "date", "history_buffer", "metadata"):
                 state.pop(key, None)
 
-            result = SensitivityEngine().analyze(state)
+            # Reuse the forecast's own PredictionService so sensitivity shares
+            # the SAME selected model configuration/instance as forecast,
+            # recommendation, and batch prediction (explicit dependency
+            # injection, not a fresh implicit service).
+            result = SensitivityEngine(
+                prediction_service=self.service
+            ).analyze(state)
             if not result.success:
                 return {}
 

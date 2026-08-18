@@ -137,6 +137,7 @@ class SensitivityAnalyzer:
                 rank=0,
                 classification="Negligible",
                 confidence=0.0,
+                confidence_type="none",
                 metadata={}
             )
 
@@ -154,7 +155,10 @@ class SensitivityAnalyzer:
         else:
             classification = "Negligible"
 
-        # Confidence: derived from consistency between plus and minus
+        # Confidence: derived from consistency between plus and minus. This is
+        # a HEURISTIC consistency/floor measure, NOT a statistical confidence.
+        # The semantics are surfaced explicitly via confidence_type so the value
+        # is never mistaken for a frequentist/Bayesian statistical confidence.
         if plus and minus:
             # Use consistency of sensitivity scores
             diff_oh = abs(plus[0]['sensitivity_oh'] - minus[0]['sensitivity_oh'])
@@ -162,8 +166,10 @@ class SensitivityAnalyzer:
             max_sens = max(abs(avg_sens_oh), abs(avg_sens_nps), 1.0)
             consistency = 1.0 - (diff_oh + diff_nps) / (2.0 * max_sens + 1e-6)
             confidence = max(0.3, min(1.0, consistency))
+            confidence_type = "heuristic_consistency"
         else:
             confidence = 0.6  # Moderate if only one direction
+            confidence_type = "heuristic_single_direction"
 
         # Build final analysis
         return SensitivityAnalysis(
@@ -181,5 +187,6 @@ class SensitivityAnalyzer:
             rank=0,
             classification=classification,
             confidence=confidence,
+            confidence_type=confidence_type,
             metadata={"directions": len(results)}
         )

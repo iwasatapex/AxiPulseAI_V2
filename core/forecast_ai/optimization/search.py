@@ -139,6 +139,15 @@ class DeterministicHillClimb:
                 return solutions
 
         found_acceptable = False
+        # Deterministic per-state dedup: identical KPI states produce identical
+        # model predictions (the same selected model/configuration), so
+        # re-evaluating a state already evaluated this search wastes model
+        # evaluations (boundary/extreme candidates are regenerated every
+        # iteration). Skipping duplicates preserves exact solution quality and
+        # determinism because an identical state yields an identical distance.
+        evaluated_states = {
+            tuple(getattr(original_state, f, 0.0) for f in self.fields)
+        }
         while iteration < max_iterations:
             if time.time() > deadline:
                 self.timed_out = True
@@ -153,6 +162,12 @@ class DeterministicHillClimb:
                 if time.time() > deadline:
                     self.timed_out = True
                     break
+                # Skip states already evaluated this search (deterministic
+                # duplicate suppression -> fewer model evaluations, identical
+                # results).
+                key = tuple(getattr(candidate, f, 0.0) for f in self.fields)
+                if key in evaluated_states:
+                    continue
                 # Validate constraints
                 if not ConstraintValidator.validate(candidate, constraints):
                     continue
@@ -163,6 +178,7 @@ class DeterministicHillClimb:
                 oh, nps = evaluator(candidate)
                 if oh is None or nps is None:
                     continue
+                evaluated_states.add(key)
 
                 distance = ScoreCalculator.compute_distance(candidate, oh, nps, target_goal)
 

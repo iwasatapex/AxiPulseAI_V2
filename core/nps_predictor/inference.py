@@ -179,6 +179,7 @@ def postprocess_predictions(pred_pct, row, preds=None, strict=False):
         "top_drivers": [],
     }
 
+    probabilistic_available = True
     try:
         result = attach_probabilistic_analysis(
             result,
@@ -188,6 +189,7 @@ def postprocess_predictions(pred_pct, row, preds=None, strict=False):
             seed=42,
         )
     except Exception as probabilistic_error:
+        probabilistic_available = False
         logger.warning(
             "0-10 probabilistic analysis failed: %s",
             probabilistic_error,
@@ -200,6 +202,7 @@ def postprocess_predictions(pred_pct, row, preds=None, strict=False):
             f"score_{i}": float(scores[i])
             for i in range(11)
         }
+        result["probabilistic_error"] = str(probabilistic_error)
 
     # ----------------------------------------------------------
     # 4. Canonical score distribution -> survey counts
@@ -324,12 +327,31 @@ def postprocess_predictions(pred_pct, row, preds=None, strict=False):
         }
     )
 
+    # Expose the probabilistic engine status explicitly. When the Bayesian/
+    # Monte-Carlo layer failed, the result is a deterministic point value from
+    # the ML 0..10 distribution and MUST NOT present itself as full probabilistic
+    # uncertainty. This never fabricates a scalar-NPS Bayesian/Monte-Carlo
+    # interval; the interval remains derived from the 0..10 survey distribution.
+    result["probabilistic_uncertainty"] = (
+        "available" if probabilistic_available else "degraded_unavailable"
+    )
+
     return result
 
-def predict_single(predictor, X, row):
-    # The trained model is ALWAYS called. A model failure or an output-shape
-    # mismatch is surfaced as an exception; it is never silently replaced by a
-    # heuristic/fallback prediction (see requirement: no silent fallback path).
+def predict_single_vector(predictor, X):
+    """Produce the canonical 11-score distribution for a single feature row.
+
+    This is the SINGLE source of truth for how a selected NPS model (or the
+    persisted weighted ensemble) yields the raw 0..10 score vector BEFORE
+    postprocessing. Single prediction, batch prediction and any other consumer
+    MUST go through this helper so that for the same input and the same
+    predictor configuration the resulting 11-score distribution is identical
+    (single prediction semantics == batch prediction semantics).
+
+    The trained model is ALWAYS called. A model failure or an output-shape
+    mismatch is surfaced as an exception; it is never silently replaced by a
+    heuristic/fallback prediction (see requirement: no silent fallback path).
+    """
     if hasattr(predictor, "ensemble_weights") and predictor.ensemble_weights:
         pred = np.zeros(11, dtype=float)
 
@@ -348,7 +370,14 @@ def predict_single(predictor, X, row):
             f"Selected NPS model '{getattr(predictor, 'model_name', None)}' "
             f"returned {len(pred)} outputs; expected 11."
         )
-    return postprocess_predictions(pred, row)
+    return pred
+
+
+def predict_single(predictor, X, row):
+    # The trained model is ALWAYS called. A model failure or an output-shape
+    # mismatch is surfaced as an exception; it is never silently replaced by a
+    # heuristic/fallback prediction (see requirement: no silent fallback path).
+    return postprocess_predictions(predict_single_vector(predictor, X), row)
 
 def predict_ensemble(predictor, X, row):
     if not predictor._all_models:

@@ -249,3 +249,90 @@ def test_handoff_sensitivity_uses_observed_not_predicted(monkeypatch):
     # test) and no feedback loop exists.
     pkg = resp.payload.get("decision_intelligence", {}).get("package", {})
     assert "sensitivity" in pkg
+
+
+# --------------------------------------------------------------------------- #
+# P1-A: FORECAST SUCCESS CONTRACT ON PARTIAL FAILURE
+# --------------------------------------------------------------------------- #
+
+def _failing_service(fail_on_or_after_day):
+    """A PredictionService whose predict() raises on/after a given day."""
+    calls = {"n": 0}
+
+    class _Predictor:
+        def predict(self, state):
+            return 82.0
+
+    class _NPS:
+        def predict(self, state):
+            return {"nps": 70.0}
+
+    class _Svc(PredictionService):
+        def predict(self, pred_req):
+            calls["n"] += 1
+            day = (pred_req.metadata or {}).get("day", 1)
+            if day >= fail_on_or_after_day:
+                raise RuntimeError(f"injected day {day} failure")
+            return PredictionService(
+                oh_predictor=_Predictor(), nps_predictor=_NPS()
+            ).predict(pred_req)
+
+    return _Svc(oh_predictor=_Predictor(), nps_predictor=_NPS())
+
+
+def test_partial_forecast_reports_partial_not_success():
+    """A forecast where some days fail must report success=False and status
+    'partial' (not a clean success), while preserving placeholder/error
+    evidence."""
+    service = _failing_service(fail_on_or_after_day=2)
+    orch = ForecastOrchestrator(prediction_service=service)
+    req = ForecastRequest(
+        operation="forecast",
+        horizon=3,
+        parameters={
+            "state": {
+                "quality": 85.0, "competency": 78.0, "release": 60.0,
+                "transfer": 9.0, "attendance": 90.0, "operations_health": 82.0,
+            }
+        },
+    )
+    resp = orch.execute(req)
+    assert resp.success is False
+    summary = resp.payload["summary"]
+    assert summary["status"] == "partial"
+    assert summary["total_days"] == 3
+    assert summary["completed_days"] < 3
+    assert resp.errors, "errors must be exposed truthfully"
+
+
+def test_fully_failed_forecast_reports_failed():
+    """A forecast where every day fails must report success=False and status
+    'failed', never a clean success."""
+    service = _failing_service(fail_on_or_after_day=1)
+    orch = ForecastOrchestrator(prediction_service=service)
+    req = ForecastRequest(
+        operation="forecast",
+        horizon=2,
+        parameters={
+            "state": {
+                "quality": 85.0, "competency": 78.0, "release": 60.0,
+                "transfer": 9.0, "attendance": 90.0, "operations_health": 82.0,
+            }
+        },
+    )
+    resp = orch.execute(req)
+    assert resp.success is False
+    summary = resp.payload["summary"]
+    assert summary["status"] == "failed"
+    assert summary["completed_days"] == 0
+
+
+def test_full_forecast_reports_completed_success():
+    """A fully completed forecast with no day errors reports success=True and
+    status 'completed'."""
+    orch = _make_orchestrator()
+    resp = orch.execute(_base_request())
+    assert resp.success is True
+    summary = resp.payload["summary"]
+    assert summary["status"] == "completed"
+    assert summary["completed_days"] == summary["total_days"]
