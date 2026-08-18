@@ -56,7 +56,6 @@ class ProductionPredictionAdapter:
         operations_health_target: float | None = None,
         nps_target: float | None = None,
         operations_health_uncertainty: float = 0.05,
-        nps_uncertainty: float = 0.05,
         simulations: int = 10000,
         seed: int = 0,
     ) -> ProductionPredictionResult:

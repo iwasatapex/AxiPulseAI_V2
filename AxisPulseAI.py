@@ -414,7 +414,6 @@ def _run_universal_probabilistic_prediction():
             "source": "AxisPulseAI",
         },
         operations_health_uncertainty=0.05,
-        nps_uncertainty=0.05,
         simulations=1000,
         seed=0,
     )
