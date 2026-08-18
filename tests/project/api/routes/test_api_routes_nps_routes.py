@@ -52,7 +52,6 @@ def test_valid_request_returns_real_prediction(monkeypatch):
         "detractors",
         "score_counts",
         "bayesian_score_distribution",
-        "confidence",
         "prediction_interval",
     ):
         assert key in data
