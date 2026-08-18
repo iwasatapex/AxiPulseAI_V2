@@ -653,3 +653,86 @@ def test_malformed_schema_metadata_fails_closed(isolated_models_dir):
     _manifest_with_feature_meta(isolated_models_dir, "{ not valid json !!!")
     with pytest.raises(Exception, match="malformed|refusing"):
         pc.verify_production_artifact(isolated_models_dir / "production_OH.pkl", is_oh=True)
+
+
+# =====================================================================
+# CI / CLEAN-CHECKOUT RESOLUTION
+# =====================================================================
+
+def test_production_paths_resolve_through_relative_current_symlink(tmp_path):
+    """In a clean checkout the canonical production paths must resolve through
+    the portable relative ``current`` symlink to the real generation files,
+    not through a machine-specific absolute path."""
+    import joblib as _joblib
+    from tests.project.core.forecast_ai.prediction.test_production_lifecycle import (
+        _FakeEstimator,
+        _FakeNPSEstimator,
+    )
+
+    models_dir = tmp_path / "models"
+    gen = models_dir / "production_generations" / "20260101000000000000"
+    gen.mkdir(parents=True)
+    (gen / "production_OH.pkl").write_bytes(b"oh-bundle")
+    (gen / "production_NPS.pkl").write_bytes(b"nps-bundle")
+    (gen / pr.MANIFEST_NAME).write_text("{}", encoding="utf-8")
+    # Portable RELATIVE current symlink (as tracked in git).
+    current = gen.parent / "current"
+    current.symlink_to(gen.name, target_is_directory=True)
+    # Portable RELATIVE canonical root symlinks (as tracked in git).
+    for name in ("production_OH.pkl", "production_NPS.pkl", pr.MANIFEST_NAME):
+        (models_dir / name).symlink_to(f"production_generations/current/{name}")
+
+    oh, nps = pr.production_paths(models_dir)
+    assert oh.is_file()
+    assert nps.is_file()
+    # Resolved targets live inside the active generation.
+    assert str(oh.resolve()).startswith(str(gen.resolve()))
+    assert str(nps.resolve()).startswith(str(gen.resolve()))
+    assert pr.manifest_path(models_dir).is_file()
+
+
+def test_link_canonical_to_generation_creates_relative_symlinks(isolated_models_dir):
+    """Promotion must create PORTABLE repository-relative canonical symlinks,
+    never machine-specific absolute ones (broken in a clean checkout)."""
+    import joblib as _joblib
+    from tests.project.core.forecast_ai.prediction.test_production_lifecycle import (
+        _FakeEstimator,
+        _FakeNPSEstimator,
+    )
+
+    gen_id = "20260101000000000001"
+    gen = pr.generations_dir(isolated_models_dir) / gen_id
+    gen.mkdir(parents=True)
+    (gen / "production_OH.pkl").write_bytes(b"oh")
+    (gen / "production_NPS.pkl").write_bytes(b"nps")
+    (gen / pr.MANIFEST_NAME).write_text("{}", encoding="utf-8")
+    # Activate as current (relative).
+    (pr.generations_dir(isolated_models_dir) / "current").symlink_to(
+        gen_id, target_is_directory=True
+    )
+
+    pr._link_canonical_to_generation(isolated_models_dir, gen)
+
+    for filename in ("production_OH.pkl", "production_NPS.pkl", pr.MANIFEST_NAME):
+        link = isolated_models_dir / filename
+        assert link.is_symlink()
+        target = link.resolve()
+        # The link must be a portable relative path (does not embed the
+        # absolute checkout root).
+        assert str(target).startswith(str(gen.resolve()))
+        assert target.is_file()
+
+
+def test_verify_artifact_rejects_broken_symlink(isolated_models_dir):
+    """A broken canonical symlink must be rejected (fail closed), never
+    silently skipped."""
+    _write_oh_artifact_with_features(isolated_models_dir, ["f1", "f2", "f3"])
+    _manifest_with_feature_meta(
+        isolated_models_dir, json.dumps(["f1", "f2", "f3"])
+    )
+    # Break the canonical symlink: point it at a nonexistent target.
+    target = isolated_models_dir / "production_OH.pkl"
+    target.unlink()
+    target.symlink_to("does_not_exist/oh.pkl")
+    with pytest.raises(OSError):
+        pc.verify_production_artifact(target, is_oh=True)

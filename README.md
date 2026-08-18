@@ -5,7 +5,13 @@ Production-grade AI forecasting and decision platform for contact-center operati
 **Release:** `v2.0.0`  
 **Status:** `READY`  
 **Production Runtime:** Python `3.13.15`  
-**Production Source Family:** `1mil-10yr`
+**Production Source Family:** `100k-10yr`
+
+> Provenance note: the active canonical production generation
+> (`models/production_generations/current`) is `100k-10yr`. Its manifest
+> records a training-environment `python_version` of `3.14.4`; the models are
+> validated to load and predict under the declared Python `3.13` runtime. CI
+> enforces this provenance fail-closed against the active generation.
 
 ---
 
@@ -65,7 +71,7 @@ The architecture prevents downstream metrics from being used to improperly force
 Version: v2.0.0
 Status: READY
 Runtime: Python 3.13.15
-Source: 1mil-10yr
+Source: 100k-10yr
 ```
 
 Final production verification:
@@ -199,7 +205,7 @@ Features:   19
 Outputs:    1
 Trained:    True
 Python:     3.13.15
-Source:     1mil-10yr
+Source:     100k-10yr
 Role:       production
 ```
 
@@ -218,7 +224,7 @@ Features:   34
 Outputs:    11
 Trained:    True
 Python:     3.13.15
-Source:     1mil-10yr
+Source:     100k-10yr
 Role:       production
 ```
 
@@ -978,7 +984,7 @@ Runtime:
 Python 3.13.15
 
 Production Source:
-1Mil-10yr
+100k-10yr
 
 OH:
 CatBoost

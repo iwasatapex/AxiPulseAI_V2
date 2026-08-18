@@ -80,19 +80,60 @@ jobs:
           PY
 
 
-      - name: Production model integrity validation
+      - name: Production model integrity validation (fail closed)
         run: |
           python - <<'PY'
+          import json
           from pathlib import Path
           from core.forecast_ai.prediction import predictor_config as pc
+          from core.forecast_ai.prediction import production_registry as pr
 
-          for name, is_oh in (("production_OH.pkl", True), ("production_NPS.pkl", False)):
-              p = Path("models") / name
-              if p.exists():
-                  pc.verify_production_artifact(p, is_oh=is_oh)
-                  print(f"PRODUCTION INTEGRITY OK: {name}")
-              else:
-                  print(f"WARN: {name} not present; skipping production integrity check")
+          MODELS = Path("models")
+          # Documented canonical production source family. This is the verified
+          # provenance of the active production generation (reconciled with the
+          # actual promoted artifacts); CI fails closed on any mismatch.
+          EXPECTED_SOURCE = "100k-10yr"
+
+          # 1. Canonical artifact paths must exist AND resolve (a broken symlink
+          #    or missing file is a hard failure, never a skipped warning).
+          canonical = {
+              "production_OH.pkl": True,
+              "production_NPS.pkl": False,
+          }
+          for name, is_oh in canonical.items():
+              p = MODELS / name
+              if not p.exists():
+                  raise SystemExit(f"FAIL: canonical model {name} missing/broken")
+              if p.is_symlink() and not p.resolve().exists():
+                  raise SystemExit(f"FAIL: canonical model {name} is a broken symlink")
+              if not p.is_file():
+                  raise SystemExit(f"FAIL: canonical model {name} is not a regular file")
+
+          # 2. Manifest must exist and resolve.
+          manifest = MODELS / "manifest.json"
+          if not manifest.exists() or not manifest.is_file():
+              raise SystemExit("FAIL: production manifest.json missing/broken")
+
+          # 3. Fail-closed artifact integrity (hash / role / provenance /
+          #    trained-state / feature-count / feature schema / output-count).
+          for name, is_oh in canonical.items():
+              pc.verify_production_artifact(MODELS / name, is_oh=is_oh)
+              print(f"PRODUCTION INTEGRITY OK: {name}")
+
+          # 4. Active generation provenance must match the documented contract.
+          active = pr.active_generation_dir(MODELS)
+          if active is None:
+              raise SystemExit("FAIL: no active production generation (current pointer missing/broken)")
+          m = json.loads((active / pr.MANIFEST_NAME).read_text(encoding="utf-8"))
+          for name in ("production_OH.pkl", "production_NPS.pkl"):
+              src = (m.get(name) or {}).get("source")
+              if src != EXPECTED_SOURCE:
+                  raise SystemExit(
+                      f"FAIL: production provenance mismatch for {name}: "
+                      f"expected source={EXPECTED_SOURCE!r}, got {src!r}"
+                  )
+          print(f"PROVENANCE OK: active generation {active.name}, source={EXPECTED_SOURCE!r}")
+          print("PRODUCTION INTEGRITY VALIDATION PASSED (fail-closed)")
           PY
 
 

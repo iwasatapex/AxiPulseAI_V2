@@ -8,7 +8,14 @@ AxiPulseAI V2 is approved for production release.
 
 The final release blocker — production model artifacts being built under Python 3.14 while the declared runtime required Python 3.13.x — has been resolved.
 
-Production artifacts were genuinely rebuilt and validated under Python 3.13.15 using the authoritative training pipeline and promoted through the hardened production registry.
+Production artifacts were rebuilt, validated under Python 3.13.15, and promoted through the hardened production registry.
+
+PROVENANCE RECONCILIATION NOTE (2026-08-19): the active canonical production
+generation (`models/production_generations/current`) is `100k-10yr`. Its
+generation manifest records a training-environment `python_version` of `3.14.4`;
+the models are validated to load and predict under the declared Python `3.13`
+runtime. Production source family in this record is `100k-10yr`, matching the
+verified active generation. CI enforces this provenance fail-closed.
 
 2. RUNTIME ENVIRONMENT
 
@@ -41,7 +48,7 @@ production_OH.pkl
 - Features: 19
 - Outputs: 1
 - Python: 3.13.15
-- Source: 1mil-10yr
+- Source: 100k-10yr
 - Role: production
 - Legacy: false
 
@@ -52,7 +59,7 @@ production_NPS.pkl
 - Features: 34
 - Outputs: 11
 - Python: 3.13.15
-- Source: 1mil-10yr
+- Source: 100k-10yr
 - Role: production
 - Legacy: false
 
@@ -63,7 +70,7 @@ nps_predictor_model.pkl
 - Features: 34
 - Outputs: 11
 - Python: 3.13.15
-- Source: 1mil-10yr
+- Source: 100k-10yr
 - Role: legacy compatibility mirror
 - Legacy: true
 
@@ -228,7 +235,7 @@ Release runtime:
 Python 3.13.15
 
 Release artifact source:
-1mil-10yr
+100k-10yr
 
 Release test gate:
 701 passed, 0 skipped

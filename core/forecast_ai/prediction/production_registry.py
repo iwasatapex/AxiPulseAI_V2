@@ -549,8 +549,15 @@ def _link_canonical_to_generation(d: Path, gen_dir: Path) -> None:
             except Exception:
                 pass
         # Otherwise replace the real file (or missing path) with a symlink
-        # through ``current``, atomically.
+        # through ``current``, atomically. The link target is a PORTABLE
+        # repository-relative path (``production_generations/current/<file>``)
+        # so the canonical paths resolve correctly in a clean checkout on any
+        # machine — never a machine-specific absolute path.
         target = active / filename
+        try:
+            rel_target = Path(os.path.relpath(target, start=d))
+        except Exception:
+            rel_target = target
         tmp = d / f".link_{filename}"
         if tmp.exists() or tmp.is_symlink():
             try:
@@ -558,7 +565,7 @@ def _link_canonical_to_generation(d: Path, gen_dir: Path) -> None:
             except OSError:
                 pass
         try:
-            tmp.symlink_to(target)
+            tmp.symlink_to(rel_target)
             os.replace(tmp, canonical)
         except (OSError, NotImplementedError):
             # Platform without symlink support: fall back to a hard copy.
