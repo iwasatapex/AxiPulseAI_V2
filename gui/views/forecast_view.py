@@ -70,7 +70,11 @@ def _render_confidence_human(confidence) -> None:
     else:
         st.caption("Model/calibrated confidence.")
 
-    horizon_factor = confidence.get("forecast_horizon_factor")
+    horizon_factor = (
+        confidence.get("forecast_horizon_factor")
+        if isinstance(confidence, dict)
+        else None
+    )
     if isinstance(horizon_factor, (int, float)):
         st.caption(f"Horizon decay factor: {float(horizon_factor):.2f}")
 
