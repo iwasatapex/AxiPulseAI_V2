@@ -84,8 +84,12 @@ class ReverseOptimizer:
                 "optimization_timeout: search exceeded the configured "
                 "timeout budget and was aborted"
             ]
+            # Preserve a genuine improving candidate discovered before the
+            # timeout. The target is still NOT achieved, so success remains
+            # False. RecommendationEngine may use best_effort=True to produce
+            # an explicitly advisory recommendation rather than dropping all
+            # useful optimizer evidence.
             success = False
-            best_effort = False
         elif not success:
             errors = ["No solution within tolerance found"]
         else:
