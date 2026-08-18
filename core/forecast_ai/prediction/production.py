@@ -68,7 +68,7 @@ class ProductionPredictionAdapter:
 
         CRITICAL: The prediction service already attaches probabilistic
         analysis (Bayesian + Monte Carlo) to the NPS result via
-        ``postprocess_predictions`` → ``_axi_attach_0_10_probabilistic_analysis``.
+        ``postprocess_predictions`` → canonical categorical probabilistic analysis.
         This adapter reuses that evidence rather than running a second
         independent probabilistic inference, eliminating duplicate execution.
         """
@@ -152,10 +152,9 @@ class ProductionPredictionAdapter:
                                 "bayesian_score_distribution",
                                 {f"score_{i}": 1.0/11 for i in range(11)}
                             ),
-                            "monte_carlo_score_distribution": {
-                                f"score_{i}": float(raw.nps.get("mean_score_counts", {}).get(f"score_{i}", 0)) 
-                                for i in range(11)
-                            },
+                            "monte_carlo_score_distribution": raw.nps.get(
+                                "monte_carlo_score_distribution", {}
+                            ),
                             "monte_carlo_nps_p05": raw.nps.get("monte_carlo_nps_p05", nps_val - 10.0),
                             "monte_carlo_nps_p50": raw.nps.get("monte_carlo_nps_p50", nps_val),
                             "monte_carlo_nps_p95": raw.nps.get("monte_carlo_nps_p95", nps_val + 10.0),

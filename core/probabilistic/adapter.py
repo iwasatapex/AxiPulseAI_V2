@@ -71,6 +71,7 @@ class UniversalProbabilisticAdapter:
         uncertainty: float = 0.05,
         samples: int = 10000,
         seed: int = 0,
+        bounds: tuple[float, float] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ProbabilisticResult:
 
@@ -79,6 +80,7 @@ class UniversalProbabilisticAdapter:
             uncertainty=uncertainty,
             samples=samples,
             seed=seed,
+            bounds=bounds,
         )
 
         return ProbabilisticResult(
@@ -95,7 +97,15 @@ class UniversalProbabilisticAdapter:
                 percentile_5=result.p05,
                 percentile_50=result.p50,
                 percentile_95=result.p95,
-                metadata=result.metadata,
+                probability_positive=result.probability_positive,
+                metadata={
+                    **result.metadata,
+                    "mean": result.mean,
+                    "probability_positive": result.probability_positive,
+                    "success_count": result.success_count,
+                    "failure_count": result.failure_count,
+                    "distribution": result.distribution,
+                },
             ),
             metadata=metadata or {},
         )
@@ -130,6 +140,7 @@ class UniversalProbabilisticAdapter:
         uncertainty: float = 0.05,
         samples: int = 10000,
         seed: int = 0,
+        bounds: tuple[float, float] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ProbabilisticResult:
 
@@ -148,6 +159,7 @@ class UniversalProbabilisticAdapter:
             uncertainty=uncertainty,
             samples=samples,
             seed=seed,
+            bounds=bounds,
         )
 
         # Bayesian posterior and Monte Carlo baseline are deliberately
@@ -237,7 +249,15 @@ class UniversalProbabilisticAdapter:
                 percentile_5=monte_carlo.p05,
                 percentile_50=monte_carlo.p50,
                 percentile_95=monte_carlo.p95,
-                metadata=monte_carlo.metadata,
+                probability_positive=monte_carlo.probability_positive,
+                metadata={
+                    **monte_carlo.metadata,
+                    "mean": monte_carlo.mean,
+                    "probability_positive": monte_carlo.probability_positive,
+                    "success_count": monte_carlo.success_count,
+                    "failure_count": monte_carlo.failure_count,
+                    "distribution": monte_carlo.distribution,
+                },
             ),
             metadata=combined_metadata,
         )
@@ -254,6 +274,7 @@ class UniversalProbabilisticAdapter:
         uncertainty: float = 0.05,
         samples: int = 10000,
         seed: int = 0,
+        bounds: tuple[float, float] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ProbabilisticResult:
 
@@ -267,6 +288,7 @@ class UniversalProbabilisticAdapter:
             uncertainty=uncertainty,
             samples=samples,
             seed=seed,
+            bounds=bounds,
             metadata=metadata,
         )
 
@@ -357,6 +379,7 @@ def adapt(
                 percentile_5=monte_carlo_result.p05,
                 percentile_50=monte_carlo_result.p50,
                 percentile_95=monte_carlo_result.p95,
+                probability_positive=monte_carlo_result.probability_positive,
                 metadata=monte_carlo_result.metadata,
             ),
             metadata=metadata or {},

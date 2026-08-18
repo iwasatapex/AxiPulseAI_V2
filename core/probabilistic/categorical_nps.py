@@ -278,7 +278,7 @@ def attach_probabilistic_analysis(
     simulations: int = 1000,
     seed: int = 42,
 ) -> dict:
-    """Canonical replacement for _axi_attach_0_10_probabilistic_analysis."""
+    """Attach canonical categorical Bayesian/Monte Carlo evidence."""
     import copy
 
     result = copy.deepcopy(result)
@@ -328,12 +328,9 @@ def attach_probabilistic_analysis(
         f"score_{i}": float(mc_result["mean_score_counts"][i]) for i in range(N_SCORES)
     }
 
-    # Attach NPS statistics
-    nps_info = nps_from_score_counts(mc_result["mean_score_counts"].astype(int))
-    result["nps"] = nps_info["nps"]
-    result["promoters"] = nps_info["promoters"]
-    result["passives"] = nps_info["passives"]
-    result["detractors"] = nps_info["detractors"]
+    # Preserve the model/business point estimate and bucket counts already
+    # produced by postprocess_predictions. Monte Carlo is uncertainty evidence,
+    # not a replacement for the deterministic NPS point estimate.
     result["monte_carlo_nps"] = mc_result["simulation_nps"].tolist()
     result["monte_carlo_nps_p05"] = mc_result["p05"]
     result["monte_carlo_nps_p50"] = mc_result["p50"]

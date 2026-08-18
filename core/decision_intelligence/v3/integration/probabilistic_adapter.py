@@ -108,14 +108,34 @@ class UniversalProbabilisticAdapter:
             values,
         )
 
+        # Bayesian and Monte Carlo operate in the same normalized probability
+        # domain. The previous implementation normalized historical values
+        # but passed the raw prediction and raw metric uncertainty to the
+        # Monte Carlo engine, producing an unbounded Normal distribution
+        # outside [0, 1]. Normalize both exactly once and bound the SAME
+        # simulation draw to the probability domain.
+        normalized_baseline = self._normalize(
+            predictor,
+            [float(baseline)],
+        )[0]
+
+        scale = 200.0 if predictor == "nps" else self._metric_scale(predictor)
+        normalized_uncertainty = metric_uncertainty / scale
+
         universal_bayesian = self.core.from_bayesian(
             observations=normalized,
         )
 
         universal_monte_carlo = self.core.from_monte_carlo(
-            baseline=float(baseline),
-            uncertainty=metric_uncertainty,
+            baseline=float(normalized_baseline),
+            uncertainty=float(normalized_uncertainty),
+            bounds=(0.0, 1.0),
             samples=samples,
+            metadata={
+                "predictor": predictor,
+                "probability_domain": True,
+                "source_scale": scale,
+            },
         )
 
         bayesian_info = universal_bayesian.bayesian
@@ -174,7 +194,7 @@ class UniversalProbabilisticAdapter:
                 else 0.0
             ),
             samples=int(simulations),
-            uncertainty=float(metric_uncertainty),
+            uncertainty=float(normalized_uncertainty),
             metadata=(
                 monte_carlo_info.metadata
                 if monte_carlo_info is not None

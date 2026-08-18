@@ -1,10 +1,5 @@
 from dataclasses import dataclass
-from core.bayesian import (
-    BayesianInferenceEngine,
-)
-from core.monte_carlo import (
-    MonteCarloEngine,
-)
+from core.probabilistic.adapter import UniversalProbabilisticAdapter
 
 
 @dataclass
@@ -15,9 +10,8 @@ class ProbabilisticDecision:
 
 class ADIEProbabilisticEngine:
 
-    def __init__(self):
-        self.bayesian = BayesianInferenceEngine()
-        self.monte_carlo = MonteCarloEngine()
+    def __init__(self, adapter: UniversalProbabilisticAdapter | None = None):
+        self.probabilistic = adapter or UniversalProbabilisticAdapter()
 
     def analyze(
         self,
@@ -27,23 +21,21 @@ class ADIEProbabilisticEngine:
         samples: int = 10000,
     ) -> ProbabilisticDecision:
 
-        bayesian_result = self.bayesian.infer(
-            observations=observations
-        )
-
-        monte_carlo_result = self.monte_carlo.simulate(
-            baseline=baseline,
-            uncertainty=uncertainty,
-            samples=samples,
-            # Decision-level baseline is a normalized probability (0..1); bound
-            # the single draw to the probability domain so no surfaced value
-            # (mean/p05/p50/p95/bins/counts) can exceed [0, 1].
+        combined = self.probabilistic.from_combined(
+            observations=observations,
+            baseline=float(baseline),
+            uncertainty=float(uncertainty),
+            samples=int(samples),
             bounds=(0.0, 1.0),
+            metadata={
+                "scope": "v3_decision_level",
+                "probability_domain": True,
+            },
         )
 
         return ProbabilisticDecision(
-            bayesian=bayesian_result,
-            monte_carlo=monte_carlo_result,
+            bayesian=combined.bayesian,
+            monte_carlo=combined.monte_carlo,
         )
 
 

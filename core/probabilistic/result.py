@@ -22,6 +22,31 @@ class BayesianInfo(BaseModel):
     prior_type: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def probability(self) -> Optional[float]:
+        """Backward-compatible probability view of the Bayesian result."""
+        return self.metadata.get("probability", self.posterior_mean)
+
+    @property
+    def confidence(self) -> Optional[float]:
+        """Backward-compatible confidence view."""
+        return self.credible_level
+
+    @property
+    def samples(self) -> Optional[int]:
+        """Number of Bayesian observations represented by the posterior.
+
+        Compatibility mapping:
+        ``samples`` is sourced from the canonical observation count.
+        Older producers may expose ``samples`` directly.
+        """
+        value = self.metadata.get("observation_count")
+        if value is None:
+            value = self.metadata.get("observation_count")
+        if value is None:
+            value = self.metadata.get("samples")
+        return int(value) if value is not None else None
+
     @model_validator(mode="after")
     def validate_credible_interval(self) -> "BayesianInfo":
         if (
@@ -47,7 +72,64 @@ class MonteCarloInfo(BaseModel):
 
     other_percentiles: Dict[float, float] = Field(default_factory=dict)
 
+    # Legacy V3 compatibility field: fraction of the single Monte Carlo
+    # sample draw that landed strictly above zero. It is derived from the
+    # existing sample summary (never a second simulation) and exposed here
+    # so V3 wrappers can keep reading ``monte_carlo.probability_positive``.
+    probability_positive: Optional[float] = Field(None, ge=0, le=1)
+
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def samples(self) -> Optional[int]:
+        """Backward-compatible alias for num_simulations."""
+        return self.num_simulations
+
+    @property
+    def p05(self) -> Optional[float]:
+        """Backward-compatible alias for percentile_5."""
+        return self.percentile_5
+
+    @property
+    def p50(self) -> Optional[float]:
+        """Backward-compatible alias for percentile_50."""
+        return self.percentile_50
+
+    @property
+    def p95(self) -> Optional[float]:
+        """Backward-compatible alias for percentile_95."""
+        return self.percentile_95
+
+    @property
+    def mean(self) -> Optional[float]:
+        """Canonical Monte Carlo mean.
+
+        Prefer the explicit canonical mean; fall back to the median only
+        when a producer supplied no mean at all.
+        """
+        value = self.metadata.get("mean")
+        if value is not None:
+            return float(value)
+
+        if self.distribution_samples:
+            return float(sum(self.distribution_samples) / len(self.distribution_samples))
+
+        return self.percentile_50
+
+    @property
+    def success_count(self) -> int:
+        """Decision-level success count when supplied by the engine."""
+        return int(self.metadata.get("success_count", 0))
+
+    @property
+    def failure_count(self) -> int:
+        """Decision-level failure count when supplied by the engine."""
+        return int(self.metadata.get("failure_count", 0))
+
+    @property
+    def distribution(self) -> list:
+        """Decision-level distribution when supplied by the engine."""
+        return list(self.metadata.get("distribution", []))
 
     @field_validator("other_percentiles")
     @classmethod

@@ -1,0 +1,20 @@
+import importlib
+
+def test_generate_interactive_data_surface():
+    module = importlib.import_module("scripts.generation.generate_interactive_data")
+    assert hasattr(module, "clear_screen")
+    assert hasattr(module, "print_header")
+    assert hasattr(module, "print_section")
+    assert hasattr(module, "print_success")
+    assert hasattr(module, "get_float_input")
+    assert hasattr(module, "get_int_input")
+    assert hasattr(module, "main")
+    assert hasattr(module, "get_user_inputs")
+    assert hasattr(module, "show_summary")
+    assert hasattr(module, "generate_data")
+    assert hasattr(module, "calculate_statistics")
+    assert hasattr(module, "display_statistics")
+    assert hasattr(module, "save_data")
+    assert hasattr(module, "run")
+    assert hasattr(module, "Colors")
+    assert hasattr(module, "InteractiveDataGenerator")
