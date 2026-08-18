@@ -132,8 +132,28 @@ KPI-met threshold:
 - Overall KPI-met requires at least 3 of 4 checked KPIs.
 
 ---
+## Probabilistic Survey-Score Uncertainty
 
-## NPS Contract
+Production NPS uncertainty is applied at the **individual survey-score level**, not to an already-computed scalar NPS.
+
+The canonical production flow is:
+
+```text
+ML model
+  ↓
+0–10 survey-score probability distribution
+  ↓
+Bayesian posterior on the 0–10 score distribution
+  ↓
+Monte Carlo / probabilistic analysis on survey scores
+  ↓
+integer survey-score counts
+  ↓
+Promoters / Passives / Detractors
+  ↓
+ NPS
+
+ ## NPS Contract
 
 Production NPS uses an 11-output model representing scores `0` through `10`.
 
