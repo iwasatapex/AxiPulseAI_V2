@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 import joblib
+from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 
@@ -1908,37 +1909,52 @@ def rolling_origin_train(
             ),
         )
 
-    # NPS candidate CV runs STRICTLY serially (n_jobs=1).
+    # Candidate-level CV parallelism is controlled explicitly by cv_n_jobs.
     #
-    # Disable subprocess parallelism entirely for NPS CV: candidate folds are
-    # already evaluated in an isolated subprocess (one at a time via
-    # cv_runner) and joblib worker processes would duplicate the parent's
-    # base RSS -- including the full training matrix resident in the parent --
-    # via fork/loky. Serial evaluation keeps peak parent RAM minimal while the
-    # full-data matrix is live. Only a single fold subprocess is ever alive.
+    # Each candidate's individual fold evaluation still uses the existing
+    # isolated/reaped subprocess path. Thread-based joblib workers are used
+    # here so shared timing/progress metadata remains in the parent process
+    # and the full training matrix is not duplicated through fork/loky.
+    cv_n_jobs = max(
+        1,
+        int(getattr(predictor.config, "cv_n_jobs", 1)),
+    )
+
     logger.info(
-        "Temporal CV: %d folds, %d candidate models, serial (n_jobs=1), "
+        "Temporal CV: %d folds, %d candidate models, n_jobs=%d, "
         "%.1fs per-fold timeout, %.0fMB per-fold RAM ceiling.",
         len(split_list),
         len(model_names),
+        cv_n_jobs,
         base_timeout,
         memory_ceiling_mb if memory_ceiling_mb is not None else float("inf"),
     )
 
-    # Serial loop over candidates. Each fold still runs in its own reaped
-    # subprocess (see _evaluate_fold_in_subprocess), so no worker-process
-    # base-RAM duplication is ever introduced.
-    results = []
+    model_items = list(base_models.items())
+
+    # Preserve the existing progress UI while allowing the configurable
+    # candidate-level Parallel execution. evaluate_model() remains the single
+    # source of truth for fold isolation, timeout handling and scoring.
     with tqdm(
         total=len(model_names),
         desc="Evaluating models (CV)",
     ) as pbar:
-        for idx, (name, model) in enumerate(
-            base_models.items(),
-            start=1,
-        ):
-            results.append(evaluate_model(name, model, idx))
-            pbar.update(1)
+        results = Parallel(
+            n_jobs=cv_n_jobs,
+            prefer="threads",
+        )(
+            delayed(evaluate_model)(
+                name,
+                model,
+                idx,
+            )
+            for idx, (name, model) in enumerate(
+                model_items,
+                start=1,
+            )
+        )
+
+        pbar.update(len(results))
 
     # ------------------------------------------------------------
     # Select best model

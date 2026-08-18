@@ -59,266 +59,198 @@ def fallback_predict(predictor, row=None):
 
 def postprocess_predictions(pred_pct, row, preds=None, strict=False):
     """
-    Convert predicted percentages into realistic survey counts.
+    Convert the model's 11-score output into the canonical probabilistic NPS flow.
 
-    Survey count is derived from released calls and the cutoff-known
-    operational state. The final NPS distribution itself comes from the
-    trained 0..10 score model; there is no hidden KPI-to-NPS forcing rule.
+    The trained model produces probabilities for survey scores 0..10.
+
+    This function does NOT perform Bayesian inference itself.
+
+    Canonical flow:
+
+        ML 0..10 distribution
+            -> canonical Bayesian/Monte Carlo layer
+            -> survey-score counts
+            -> promoter/passive/detractor counts
+            -> NPS
+
+    Bayesian and Monte Carlo uncertainty therefore operate on the individual
+    survey-score distribution, never on an already-computed scalar NPS.
     """
-    import numpy as np
+    # ---- 1. Determine survey population ----
+    total_calls = _row_float(
+        row,
+        "total_calls_received",
+        100,
+    )
 
-    total_calls = _row_float(row, "total_calls_received", 100)
-    release_rate = _row_float(row, "actual_release_rate", 60.0)
-    released_calls = max(1, int(round(total_calls * release_rate / 100)))
+    release_rate = _row_float(
+        row,
+        "actual_release_rate",
+        60.0,
+    )
 
-    # ---- 1. Survey count: 10-17% based on health ----
-    health = _row_float(row, "operational_health", 80.0)
-    health_clamped = max(0, min(120, health))
-    survey_rate = 0.08 + (health_clamped / 120) * 0.03  # 0.10..0.17
-    survey_rate = np.clip(survey_rate, 0.08, 0.11)
-    total_surveys = max(1, int(round(released_calls * survey_rate)))
+    released_calls = max(
+        1,
+        int(round(total_calls * release_rate / 100)),
+    )
 
-    # ---- 2. ML distribution (11-score output) ----
-    scores = np.asarray(pred_pct, dtype=float).flatten()
+    health = _row_float(
+        row,
+        "operational_health",
+        80.0,
+    )
+
+    health_clamped = max(
+        0,
+        min(120, health),
+    )
+
+    survey_rate = (
+        0.08
+        + (health_clamped / 120) * 0.03
+    )
+
+    survey_rate = np.clip(
+        survey_rate,
+        0.08,
+        0.11,
+    )
+
+    total_surveys = max(
+        1,
+        int(round(released_calls * survey_rate)),
+    )
+
+    # ---- 2. Validate and normalize ML 0..10 distribution ----
+    scores = np.asarray(
+        pred_pct,
+        dtype=float,
+    ).flatten()
 
     if scores.size != 11:
-        raise RuntimeError(f"Expected 11 outputs, got {scores.size}")
+        raise RuntimeError(
+            f"Expected 11 outputs, got {scores.size}"
+        )
 
-    scores = np.maximum(scores, 0)
-
-    if scores.sum() == 0:
-        scores[:] = 1.0
-
-    scores /= scores.sum()
-
-    # ---- 2A. Bayesian update on the 0-10 score distribution ----
-    #
-    # Bayesian reasoning belongs at the individual survey-score level.
-    # The ML model supplies the observed 0..10 probability distribution.
-    # A symmetric Dirichlet prior prevents any score from becoming
-    # artificially impossible and produces a posterior distribution.
-    #
-    # The resulting posterior is used for the score distribution only.
-    # NPS remains calculated later from the resulting survey counts.
-    bayesian_prior_strength = 1.0
-    bayesian_evidence_strength = max(
-        1.0,
-        float(total_surveys),
-    )
-
-    bayesian_prior = np.full(
-        11,
-        bayesian_prior_strength / 11.0,
-        dtype=float,
-    )
-
-    bayesian_evidence = (
-        scores
-        * bayesian_evidence_strength
-    )
-
-    bayesian_posterior = (
-        bayesian_prior
-        + bayesian_evidence
-    )
-
-    bayesian_posterior /= (
-        bayesian_posterior.sum()
-    )
-
-    # Preserve the universal 0..10 score distribution.
-    scores = bayesian_posterior
-
-    # Recalculate business buckets AFTER Bayesian updating.
-    detractor_pct = scores[:7].sum()
-    passive_pct = scores[7:9].sum()
-    promoter_pct = scores[9:11].sum()
-
-
-    ml_dist = np.array(
-        [promoter_pct, passive_pct, detractor_pct],
-        dtype=float,
-    )
-
-    ml_dist /= ml_dist.sum()
-
-    # ---- 3. Production NPS buckets come directly from the learned
-    # 0..10 survey-score distribution. No hard-coded KPI-to-NPS target is
-    # blended into the model output.
-    ml_dist = np.array(
-        [promoter_pct, passive_pct, detractor_pct],
-        dtype=float,
-    )
-    ml_dist /= ml_dist.sum()
-    final_dist = ml_dist
-
-    # ==========================================================
-    # 5. Convert the 3 business buckets back onto the
-    #    Bayesian 0–10 score distribution.
-    #
-    # Bayesian operates on:
-    #
-    #   score 0 ... score 10
-    #
-    # Existing business logic operates on:
-    #
-    #   final_dist[0] = promoter probability
-    #   final_dist[1] = passive probability
-    #   final_dist[2] = detractor probability
-    #
-    # Preserve BOTH:
-    #
-    #   - business bucket probabilities
-    #   - individual Bayesian score probabilities
-    #
-    # Bucket mapping:
-    #
-    #   0–6  -> Detractors
-    #   7–8  -> Passives
-    #   9–10 -> Promoters
-    # ==========================================================
-
-    bayesian_score_dist = np.asarray(
+    scores = np.maximum(
         scores,
-        dtype=float,
-    ).copy()
-
-    bayesian_score_dist = np.maximum(
-        bayesian_score_dist,
         0.0,
     )
 
-    if bayesian_score_dist.sum() <= 0:
-        bayesian_score_dist = np.full(
+    if scores.sum() <= 0.0:
+        scores = np.full(
             11,
             1.0 / 11.0,
             dtype=float,
         )
     else:
-        bayesian_score_dist /= (
-            bayesian_score_dist.sum()
+        scores /= scores.sum()
+
+    # ----------------------------------------------------------
+    # 3. CANONICAL PROBABILISTIC NPS PATH
+    #
+    # inference.py does not perform Bayesian inference.
+    #
+    # categorical_nps.py owns:
+    #
+    #   ML 0..10 probabilities
+    #          ↓
+    #   Bayesian Dirichlet model
+    #          ↓
+    #   Monte Carlo survey sampling
+    #          ↓
+    #   0..10 survey counts
+    #          ↓
+    #   Promoter / Passive / Detractor
+    #          ↓
+    #   NPS
+    #
+    # NPS is therefore always derived from survey-score outcomes.
+    # ----------------------------------------------------------
+
+    result = {
+        "bayesian_score_distribution": {
+            f"score_{i}": float(scores[i])
+            for i in range(11)
+        },
+        "top_drivers": [],
+    }
+
+    try:
+        result = attach_probabilistic_analysis(
+            result,
+            total_surveys=total_surveys,
+            observed_counts=None,
+            simulations=1000,
+            seed=42,
+        )
+    except Exception as probabilistic_error:
+        logger.warning(
+            "0-10 probabilistic analysis failed: %s",
+            probabilistic_error,
         )
 
-    # Existing business bucket probabilities.
-    promoter_probability = float(
-        final_dist[0]
-    )
-    passive_probability = float(
-        final_dist[1]
-    )
-    detractor_probability = float(
-        final_dist[2]
-    )
+        # Preserve the deterministic ML score distribution if the
+        # probabilistic layer cannot run. Do not implement a second
+        # Bayesian/Monte Carlo path here.
+        result["bayesian_score_distribution"] = {
+            f"score_{i}": float(scores[i])
+            for i in range(11)
+        }
 
-    # Redistribute each business bucket across its
-    # individual scores according to the Bayesian posterior.
-    final_score_dist = np.zeros(
-        11,
-        dtype=float,
-    )
+    # ----------------------------------------------------------
+    # 4. Canonical score distribution -> survey counts
+    #
+    # Normally attach_probabilistic_analysis() has already generated
+    # score_counts. The fallback below exists only to preserve a valid
+    # deterministic result if the probabilistic layer fails.
+    # ----------------------------------------------------------
 
-    detractor_shape = (
-        bayesian_score_dist[0:7]
-    )
-    passive_shape = (
-        bayesian_score_dist[7:9]
-    )
-    promoter_shape = (
-        bayesian_score_dist[9:11]
-    )
+    if "score_counts" not in result:
+        raw_counts = scores * total_surveys
 
-    detractor_shape_sum = float(
-        detractor_shape.sum()
-    )
-    passive_shape_sum = float(
-        passive_shape.sum()
-    )
-    promoter_shape_sum = float(
-        promoter_shape.sum()
-    )
-
-    if detractor_shape_sum > 0:
-        final_score_dist[0:7] = (
-            detractor_shape
-            / detractor_shape_sum
-            * detractor_probability
-        )
-    else:
-        final_score_dist[0:7] = (
-            detractor_probability
-            / 7.0
-        )
-
-    if passive_shape_sum > 0:
-        final_score_dist[7:9] = (
-            passive_shape
-            / passive_shape_sum
-            * passive_probability
-        )
-    else:
-        final_score_dist[7:9] = (
-            passive_probability
-            / 2.0
-        )
-
-    if promoter_shape_sum > 0:
-        final_score_dist[9:11] = (
-            promoter_shape
-            / promoter_shape_sum
-            * promoter_probability
-        )
-    else:
-        final_score_dist[9:11] = (
-            promoter_probability
-            / 2.0
-        )
-
-    final_score_dist = np.maximum(
-        final_score_dist,
-        0.0,
-    )
-
-    final_score_dist /= (
-        final_score_dist.sum()
-    )
-
-    # ---- 5A. Convert 0–10 distribution to survey counts ----
-
-    raw_counts = (
-        final_score_dist
-        * total_surveys
-    )
-
-    counts = np.floor(
-        raw_counts
-    ).astype(int)
-
-    # Largest-remainder allocation guarantees that
-    # score counts sum exactly to total_surveys.
-    remainder = (
-        int(total_surveys)
-        - int(counts.sum())
-    )
-
-    if remainder > 0:
-        fractional = (
+        counts = np.floor(
             raw_counts
-            - counts
+        ).astype(int)
+
+        remainder = (
+            int(total_surveys)
+            - int(counts.sum())
         )
 
-        order = np.argsort(
-            -fractional
+        if remainder > 0:
+            fractional = raw_counts - counts
+            order = np.argsort(-fractional)
+
+            for idx in order[:remainder]:
+                counts[idx] += 1
+
+        counts = np.maximum(
+            counts,
+            0,
         )
 
-        for idx in order[:remainder]:
-            counts[idx] += 1
+        result["score_counts"] = {
+            f"score_{i}": int(counts[i])
+            for i in range(11)
+        }
 
-    counts = np.maximum(
-        counts,
-        0,
+    # ----------------------------------------------------------
+    # 5. Derive business buckets ONLY from individual survey scores
+    # ----------------------------------------------------------
+
+    counts = np.asarray(
+        [
+            int(
+                result["score_counts"].get(
+                    f"score_{i}",
+                    0,
+                )
+            )
+            for i in range(11)
+        ],
+        dtype=int,
     )
-
-    # ---- 5B. Business buckets from actual 0–10 counts ----
 
     detractors = int(
         counts[0:7].sum()
@@ -332,82 +264,65 @@ def postprocess_predictions(pred_pct, row, preds=None, strict=False):
         counts[9:11].sum()
     )
 
-    # ---- 6. NPS, hard-clamped to the guaranteed [75, 100] range ----
-    nps = ((promoters - detractors) / total_surveys) * 100 if total_surveys > 0 else 0.0
-    nps = float(np.clip(nps, -100.0, 100.0))
+    total_counted_surveys = int(
+        counts.sum()
+    )
 
-    if preds is not None and len(preds) > 1:
-        arr = np.asarray(preds)
-        std = np.std(arr[:, 0])
-        confidence = np.clip(np.exp(-std / 10) * 100, 50, 99)
-        ci = max(1.0, 1.96 * std)
+    if total_counted_surveys > 0:
+        nps = (
+            (promoters - detractors)
+            / total_counted_surveys
+        ) * 100.0
     else:
-        # Confidence from prediction distribution entropy
-        prob = np.asarray(counts, dtype=float)
-        prob = np.maximum(prob, 1e-12)
-        prob = prob / (prob.sum() + 1e-9)
-        entropy = -np.sum(prob * np.log(prob))
-        max_entropy = np.log(len(prob))
+        nps = 0.0
 
-        confidence = np.clip(
-            (1 - entropy / max_entropy) * 100,
-            50,
-            99
+    nps = float(
+        np.clip(
+            nps,
+            -100.0,
+            100.0,
         )
+    )
 
-        ci = max(1.0, (100 - confidence) / 5)
+    # Keep canonical probabilistic uncertainty if supplied.
+    if (
+        "monte_carlo_nps_p05" in result
+        and "monte_carlo_nps_p95" in result
+    ):
+        prediction_interval = {
+            "low": float(
+                result["monte_carlo_nps_p05"]
+            ),
+            "high": float(
+                result["monte_carlo_nps_p95"]
+            ),
+        }
+    else:
+        prediction_interval = {
+            "low": float(nps),
+            "high": float(nps),
+        }
 
-    result = {
-        # Bayesian posterior probability for each individual
-        # NPS survey score from 0 through 10.
-        "bayesian_score_distribution": {
-            f"score_{i}": float(
-                round(
-                    final_score_dist[i],
-                    8,
-                )
-            )
-            for i in range(11)
-        },
-
-        # Predicted number of surveys at each score.
-        "score_counts": {
-            f"score_{i}": int(
-                counts[i]
-            )
-            for i in range(11)
-        },
-
-        # Business bucket counts derived ONLY after
-        # the individual score distribution is established.
-        "promoters": int(promoters),
-        "passives": int(passives),
-        "detractors": int(detractors),
-        "nps": round(nps, 2),
-        "confidence": float(round(float(confidence), 1)),
-        "prediction_interval": {
-            "low": float(round(max(-100.0, nps - ci), 2)),
-            "high": float(round(min(100.0, nps + ci), 2)),
-        },
-        "top_drivers": [],
-    }
-    # ----------------------------------------------------------
-    # AXIPULSEAI: Bayesian + Monte Carlo operate on 0..10
-    # ----------------------------------------------------------
-    try:
-        result = attach_probabilistic_analysis(
-            result,
-            total_surveys=total_surveys,
-            observed_counts=None,
-            simulations=1000,
-            seed=42,
-        )
-    except Exception as probabilistic_error:
-        logger.warning(
-            f"0-10 probabilistic analysis failed: {probabilistic_error}"
-        )
+    result.update(
+        {
+            "score_counts": {
+                f"score_{i}": int(counts[i])
+                for i in range(11)
+            },
+            "promoters": promoters,
+            "passives": passives,
+            "detractors": detractors,
+            "nps": round(nps, 2),
+            "prediction_interval": prediction_interval,
+            "top_drivers": result.get(
+                "top_drivers",
+                [],
+            ),
+        }
+    )
 
     return result
+
 def predict_single(predictor, X, row):
     # The trained model is ALWAYS called. A model failure or an output-shape
     # mismatch is surfaced as an exception; it is never silently replaced by a
