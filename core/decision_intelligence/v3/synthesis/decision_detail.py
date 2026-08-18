@@ -839,6 +839,14 @@ def _build_sensitivity_detail(sensitivity_output: Mapping[str, Any] | None) -> d
                 if analysis.get("sensitivity_score_nps") is not None
                 else analysis.get("sensitivity_nps")
             )
+            raw_direction = (
+                "increase"
+                if oh_change is not None and oh_change > 0
+                else "decrease"
+                if oh_change is not None
+                else "unknown"
+            )
+
             canonical_direction = (
                 "decrease"
                 if metric.lower() == "transfer"
@@ -901,7 +909,7 @@ def _build_sensitivity_detail(sensitivity_output: Mapping[str, Any] | None) -> d
                 "oh_change": oh_change,
                 "nps_change": nps_change,
                 # Backward-compatible raw experiment direction.
-                "direction": direction,
+                "direction": raw_direction,
                 "improvement_direction": canonical_direction,
                 "raw_sensitivity_oh": raw_sensitivity_oh,
                 "improvement_sensitivity_oh": improvement_sensitivity_oh,
