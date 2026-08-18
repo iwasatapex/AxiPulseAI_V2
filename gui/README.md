@@ -53,18 +53,18 @@ logic is duplicated here.
 ## Start the GUI
 
 From the V2 project root (`/home/amteur/Documents/AxiPulseAI_V2`), always use the
-project virtualenv (`.venv`) — a system Python that has `streamlit` but not
+project virtualenv (`.venv313`) — a system Python that has `streamlit` but not
 `pydantic` fails with `ModuleNotFoundError: No module named 'pydantic'`.
 
 ```bash
 # Preferred: activate the reproducible venv, then run streamlit.
-source .venv/bin/activate
+source .venv313/bin/activate
 python -m streamlit run gui/app.py
 
 # Or skip activation by calling the venv interpreter directly:
-.venv/bin/python -m streamlit run gui/app.py
+.venv313/bin/python -m streamlit run gui/app.py
 
-# Or use the convenience launcher (it prefers .venv/bin/python):
+# Or use the convenience launcher (it prefers .venv313/bin/python):
 ./gui/run.sh
 ```
 
@@ -95,8 +95,8 @@ Open http://localhost:8501
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/test_gui_services.py -v
-.venv/bin/python -m pytest tests/ -q   # full regression
+.venv313/bin/python -m pytest tests/test_gui_services.py -v
+.venv313/bin/python -m pytest tests/ -q   # full regression
 ```
 
 ## Theme

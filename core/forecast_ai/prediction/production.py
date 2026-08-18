@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 from core.probabilistic import (
     wrap_prediction,
+    wrap_nps_prediction,
     attach_probabilistic_analysis,
     nps_from_score_counts,
     BayesianResult,
@@ -132,65 +133,79 @@ class ProductionPredictionAdapter:
 
         # --- NPS envelope ---
         if raw.nps is not None:
-            nps_val = float(raw.nps)
-            # Check if probabilistic analysis already attached
+            # The canonical 0..10 score distribution is carried in one of two
+            # representations:
+            #   1) dict at ``raw.nps`` (with its own distribution/score_counts/
+            #      total_surveys), or
+            #   2) scalar ``raw.nps`` plus the separate result fields the real
+            #      PredictionService emits (bayesian_score_distribution,
+            #      score_counts, total_surveys deriving from the counts).
+            # Source it from whichever representation the producer used, and
+            # only reject when no distribution exists anywhere — proving the
+            # invariant that scalar-only NPS uncertainty is prohibited.
             if isinstance(raw.nps, dict):
-                if "monte_carlo_nps" in raw.nps:
-                    # Reuse existing categorical NPS probabilistic evidence
-                    # Do NOT run a second Bayesian/MC - this was the duplicate
-                    nps_envelope = {
-                        "prediction": nps_val,
-                        "probabilistic": {
-                            "most_likely": nps_val,
-                            "likely_range_lower": nps_val - 10.0,
-                            "likely_range_upper": nps_val + 10.0,
-                            "range_confidence": 0.9,
-                            "uncertainty": 10.0,
-                            "confidence": 0.9,
-                            "source": "reuse_existing_categorical",
-                            "bayesian_score_distribution": raw.nps.get(
-                                "bayesian_score_distribution",
-                                {f"score_{i}": 1.0/11 for i in range(11)}
-                            ),
-                            "monte_carlo_score_distribution": raw.nps.get(
-                                "monte_carlo_score_distribution", {}
-                            ),
-                            "monte_carlo_nps_p05": raw.nps.get("monte_carlo_nps_p05", nps_val - 10.0),
-                            "monte_carlo_nps_p50": raw.nps.get("monte_carlo_nps_p50", nps_val),
-                            "monte_carlo_nps_p95": raw.nps.get("monte_carlo_nps_p95", nps_val + 10.0),
-                        },
-                    }
-                else:
-                    # No existing NPS probabilistic data - run new envelope
-                    nps_envelope = wrap_prediction(
-                        float(raw.nps),
-                        target=nps_target,
-                        uncertainty=float(nps_uncertainty),
-                        samples=int(simulations),
-                        seed=int(seed),
-                        metadata={
-                            "predictor": "PredictionService",
-                            "metric": "nps",
-                            "source": "native_0_to_10",
-                            "distribution_authoritative": True,
-                        },
-                    )
-            else:
-                # Raw float value - run new envelope
-                nps_envelope = wrap_prediction(
-                    float(raw.nps),
-                    target=nps_target,
-                    uncertainty=float(nps_uncertainty),
-                    samples=int(simulations),
-                    seed=int(seed),
-                    metadata={
-                        "predictor": "PredictionService",
-                        "metric": "nps",
-                        "source": "native_0_to_10",
-                        "distribution_authoritative": True,
-                    },
+                nps_val = float(raw.nps["nps"])
+                score_distribution = (
+                    raw.nps.get("bayesian_score_distribution")
+                    or raw.nps.get("nps_distribution")
                 )
-        
+                score_counts = raw.nps.get("score_counts")
+                inner_total_surveys = raw.nps.get("total_surveys")
+            else:
+                nps_val = float(raw.nps)
+                score_distribution = getattr(raw, "bayesian_score_distribution", None)
+                if score_distribution is None and isinstance(raw, dict):
+                    score_distribution = raw.get("bayesian_score_distribution")
+                score_counts = getattr(raw, "score_counts", None)
+                if score_counts is None and isinstance(raw, dict):
+                    score_counts = raw.get("score_counts")
+                inner_total_surveys = getattr(raw, "total_surveys", None)
+                if inner_total_surveys is None and isinstance(raw, dict):
+                    inner_total_surveys = raw.get("total_surveys")
+
+            if isinstance(score_counts, dict):
+                observed_counts = [
+                    int(score_counts.get(f"score_{i}", 0))
+                    for i in range(11)
+                ]
+            elif score_counts is not None:
+                observed_counts = [int(v) for v in score_counts]
+            else:
+                observed_counts = None
+
+            total_surveys = inner_total_surveys
+            if total_surveys is None and observed_counts is not None:
+                total_surveys = sum(observed_counts)
+
+            if score_distribution is None:
+                # Scalar NPS with no survey-score distribution anywhere must
+                # not be wrapped with generic Bayesian/Monte Carlo uncertainty.
+                raise ValueError(
+                    "Production NPS probabilistic analysis requires score_0..score_10 "
+                    "distribution and total_surveys; scalar NPS uncertainty is prohibited."
+                )
+            if total_surveys is None:
+                # The canonical NPS predictor always returns score_counts;
+                # refuse to invent survey volume if that invariant is broken.
+                raise ValueError(
+                    "NPS probabilistic output is missing total_surveys; "
+                    "cannot perform score-level Bayesian/Monte Carlo analysis."
+                )
+
+            nps_envelope = wrap_nps_prediction(
+                nps_val,
+                score_distribution=score_distribution,
+                total_surveys=int(total_surveys),
+                observed_score_counts=observed_counts,
+                simulations=int(simulations),
+                seed=int(seed),
+                metadata={
+                    "predictor": "PredictionService",
+                    "metric": "nps",
+                    "source": "canonical_0_to_10",
+                },
+            )
+
         # Extract bayesian_score_distribution and score_counts from raw result
         bsd = raw.bayesian_score_distribution if hasattr(raw, "bayesian_score_distribution") else None
         if bsd is None and isinstance(raw, dict):

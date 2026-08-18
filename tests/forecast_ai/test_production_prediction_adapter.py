@@ -13,9 +13,18 @@ class StubPredictionService:
 
     def predict(self, request):
         self.requests.append(request)
+        # Mirror the real PredictionService: a scalar NPS point forecast plus
+        # the canonical 0..10 score distribution carried in the separate
+        # result fields (bayesian_score_distribution / score_counts).
         return PredictionResult(
             operations_health=82.0,
             nps=81.0,
+            bayesian_score_distribution={
+                f"score_{i}": (0.0 if i != 10 else 1.0) for i in range(11)
+            },
+            score_counts={
+                f"score_{i}": (0 if i != 10 else 100) for i in range(11)
+            },
             warnings=[],
             errors=[],
         )

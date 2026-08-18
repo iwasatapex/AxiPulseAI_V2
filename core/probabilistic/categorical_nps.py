@@ -17,10 +17,11 @@ N_SCORES = 11  # scores 0..10
 
 
 class BayesianResult:
-    """Result of a single Bayesian 0..10 Dirichlet update."""
+    """Result of a Bayesian Dirichlet model over survey scores 0..10."""
 
     posterior_mean: float = 0.0
     posterior: np.ndarray | None = None
+    posterior_alpha: np.ndarray | None = None
     prior_mean: float = 0.0
     prior_strength: float = 0.0
     credible_interval_lower: float | None = None
@@ -37,6 +38,8 @@ class BayesianResult:
         # Set defaults for any unset fields
         if self.posterior is None:
             self.posterior = np.zeros(N_SCORES, dtype=float)
+        if self.posterior_alpha is None:
+            self.posterior_alpha = np.asarray(self.posterior, dtype=float).copy()
         if self.metadata is None:
             self.metadata = {}
 
@@ -112,9 +115,12 @@ def from_prior_only(
         metadata = {}
     metadata["prior_strength"] = float(prior_strength)
 
+    posterior_alpha = prior * float(prior_strength)
+
     result = BayesianResult(
         posterior_mean=mean_score,
         posterior=posterior,
+        posterior_alpha=posterior_alpha,
         prior_mean=float(np.mean(prior)),
         prior_strength=float(prior_strength),
         credible_interval_lower=ci_lower,
@@ -154,6 +160,8 @@ def from_observed_counts(
     obs = np.asarray(observed_counts, dtype=float).reshape(-1)
     if obs.size != N_SCORES:
         raise ValueError(f"Expected {N_SCORES} observed counts, got {obs.size}")
+    if np.any(~np.isfinite(obs)) or np.any(obs < 0):
+        raise ValueError("Observed score counts must be finite and non-negative")
 
     alpha = prior * float(max(1.0, prior_strength)) + obs
     posterior = alpha / float(alpha.sum())
@@ -176,6 +184,7 @@ def from_observed_counts(
     result = BayesianResult(
         posterior_mean=mean_score,
         posterior=posterior,
+        posterior_alpha=alpha,
         prior_mean=float(np.mean(prior)),
         prior_strength=float(prior_strength),
         credible_interval_lower=ci_lower,
@@ -192,18 +201,39 @@ def from_monte_carlo(
     total_surveys: int,
     simulations: int = 1000,
     random_state: int = 42,
+    dirichlet_strength: float | None = None,
 ) -> dict[str, Any]:
-    """Monte Carlo simulation on the 0..10 score distribution."""
-    # Extract posterior from BayesianResult if needed
+    """Propagate uncertainty through the 0..10 survey-score distribution.
+
+    Monte Carlo operates on survey scores, never on a scalar NPS. If a
+    ``BayesianResult`` is supplied, each simulation first draws a score
+    probability vector from the Dirichlet posterior, then draws survey counts
+    from that vector. This propagates both Bayesian parameter uncertainty and
+    finite survey-sample uncertainty into NPS.
+    """
+    total_surveys = int(total_surveys)
+    simulations = int(simulations)
+    if total_surveys <= 0:
+        raise ValueError("total_surveys must be greater than zero")
+    if simulations <= 0:
+        raise ValueError("simulations must be greater than zero")
+
+    posterior_alpha = None
     if isinstance(posterior_distribution, BayesianResult):
         posterior = _extract_posterior(posterior_distribution)
+        posterior_alpha = np.asarray(
+            posterior_distribution.posterior_alpha, dtype=float
+        ).reshape(-1)
+        if posterior_alpha.size != N_SCORES or np.any(posterior_alpha <= 0):
+            posterior_alpha = None
     else:
         posterior = np.asarray(posterior_distribution, dtype=float).reshape(-1)
 
-    if len(posterior) != N_SCORES:
-        raise ValueError(f"Expected {N_SCORES} posterior probabilities, got {len(posterior)}")
+    if posterior.size != N_SCORES:
+        raise ValueError(
+            f"Expected {N_SCORES} posterior probabilities, got {posterior.size}"
+        )
 
-    # Normalize
     posterior = np.nan_to_num(posterior, nan=0.0, posinf=0.0, neginf=0.0)
     posterior = np.maximum(posterior, 0.0)
     total = float(posterior.sum())
@@ -212,38 +242,46 @@ def from_monte_carlo(
     else:
         posterior = posterior / total
 
-    # Monte Carlo draws
-    rng = np.random.default_rng(random_state)
+    if posterior_alpha is None and dirichlet_strength is not None:
+        if not np.isfinite(dirichlet_strength) or dirichlet_strength <= 0:
+            raise ValueError("dirichlet_strength must be greater than zero")
+        posterior_alpha = posterior * float(dirichlet_strength)
 
+    rng = np.random.default_rng(random_state)
     simulation_nps = np.empty(simulations, dtype=float)
-    all_scores = np.empty((simulations, total_surveys), dtype=int)
+    total_score_counts = np.zeros(N_SCORES, dtype=float)
 
     for sim_idx in range(simulations):
-        scores = rng.choice(np.arange(N_SCORES), size=total_surveys, replace=True, p=posterior)
-        all_scores[sim_idx] = scores
-        detractors = int(np.sum((scores >= 0) & (scores <= 6)))
-        passives = int(np.sum((scores >= 7) & (scores <= 8)))
-        promoters = int(np.sum((scores >= 9) & (scores <= 10)))
-        nps = ((promoters - detractors) / total_surveys) * 100.0
-        simulation_nps[sim_idx] = nps
+        # Bayesian parameter uncertainty: draw the 0..10 probability vector.
+        if posterior_alpha is not None:
+            probabilities = rng.dirichlet(posterior_alpha)
+        else:
+            probabilities = posterior
 
-    # Compute mean_score_counts across all draws
-    total_draws = simulations * total_surveys
-    score_counts = np.zeros(N_SCORES, dtype=float)
-    for s in range(N_SCORES):
-        score_counts[s] = float(np.sum(all_scores == s))
-    mean_score_counts = score_counts / total_draws * total_surveys  # per-survey frequency
+        # Sampling uncertainty: draw the actual survey counts.
+        counts = rng.multinomial(total_surveys, probabilities)
+        total_score_counts += counts
 
-    p05 = float(np.percentile(simulation_nps, 5))
-    p50 = float(np.percentile(simulation_nps, 50))
-    p95 = float(np.percentile(simulation_nps, 95))
+        detractors = int(counts[:7].sum())
+        promoters = int(counts[9:11].sum())
+        simulation_nps[sim_idx] = (
+            (promoters - detractors) / total_surveys
+        ) * 100.0
+
+    mean_score_counts = (
+        total_score_counts / float(simulations)
+    )
 
     return {
         "simulation_nps": simulation_nps,
         "mean_score_counts": mean_score_counts,
-        "p05": p05,
-        "p50": p50,
-        "p95": p95,
+        "p05": float(np.percentile(simulation_nps, 5)),
+        "p50": float(np.percentile(simulation_nps, 50)),
+        "p95": float(np.percentile(simulation_nps, 95)),
+        "simulation_count": simulations,
+        "total_surveys": total_surveys,
+        "distribution_domain": "survey_scores_0_10",
+        "bayesian_parameter_sampling": posterior_alpha is not None,
     }
 
 
@@ -277,63 +315,100 @@ def attach_probabilistic_analysis(
     observed_counts: list[int] | None = None,
     simulations: int = 1000,
     seed: int = 42,
+    prior_strength: float = 20.0,
 ) -> dict:
-    """Attach canonical categorical Bayesian/Monte Carlo evidence."""
+    """Attach canonical Bayesian + Monte Carlo analysis on scores 0..10.
+
+    The ML model supplies a distribution over the eleven survey scores.
+    Bayesian inference updates that distribution using real observed score
+    counts when available; when forecasting future outcomes, the ML
+    distribution is the Bayesian prior because future survey counts do not yet
+    exist. Monte Carlo then propagates the Bayesian score uncertainty and
+    survey-sampling uncertainty into a distribution of NPS values.
+    """
     import copy
 
     result = copy.deepcopy(result)
-
     raw_distribution = result.get("bayesian_score_distribution")
     if not isinstance(raw_distribution, dict):
-        return result
+        raise ValueError("result must contain bayesian_score_distribution")
 
-    # Get the 11-score distribution
     ml_distribution = np.array(
         [float(raw_distribution.get(f"score_{i}", 0.0)) for i in range(N_SCORES)],
         dtype=float,
     )
 
-    # Normalize
-    ml_distribution = np.nan_to_num(ml_distribution, nan=0.0, posinf=0.0, neginf=0.0)
-    ml_distribution = np.maximum(ml_distribution, 0.0)
-    total = float(ml_distribution.sum())
-    if total <= 0.0:
-        ml_distribution = np.full(N_SCORES, 1.0 / N_SCORES, dtype=float)
+    if observed_counts is None:
+        bayesian = from_prior_only(
+            ml_distribution,
+            prior_strength=prior_strength,
+            metadata={"evidence": "model_distribution_only"},
+        )
     else:
-        ml_distribution = ml_distribution / total
+        bayesian = from_observed_counts(
+            ml_distribution,
+            observed_counts,
+            prior_strength=prior_strength,
+            metadata={"evidence": "observed_score_counts"},
+        )
 
-    # Bayesian update
-    if observed_counts is not None:
-        obs = np.asarray(observed_counts, dtype=float).reshape(-1)
-        if obs.size != N_SCORES:
-            raise ValueError(f"Expected {N_SCORES} observed counts, got {obs.size}")
-        alpha = ml_distribution * float(max(1.0, 10.0)) + obs
-        posterior = alpha / float(alpha.sum())
-    else:
-        posterior = ml_distribution.copy()
-
-    # Monte Carlo - pass the posterior as list
     mc_result = from_monte_carlo(
-        posterior.tolist(),
+        bayesian,
         total_surveys=total_surveys,
         simulations=simulations,
         random_state=seed,
     )
 
-    # Update result dict
+    posterior = np.asarray(bayesian.posterior, dtype=float)
+    posterior /= posterior.sum()
+
     result["bayesian_score_distribution"] = {
         f"score_{i}": float(posterior[i]) for i in range(N_SCORES)
     }
-    result["monte_carlo_score_distribution"] = {
-        f"score_{i}": float(mc_result["mean_score_counts"][i]) for i in range(N_SCORES)
+    result["bayesian_posterior_alpha"] = {
+        f"score_{i}": float(bayesian.posterior_alpha[i])
+        for i in range(N_SCORES)
     }
+    result["bayesian_prior_strength"] = float(prior_strength)
+    result["bayesian_evidence"] = bayesian.metadata.get("evidence")
 
-    # Preserve the model/business point estimate and bucket counts already
-    # produced by postprocess_predictions. Monte Carlo is uncertainty evidence,
-    # not a replacement for the deterministic NPS point estimate.
+    result["monte_carlo_score_distribution"] = {
+        f"score_{i}": float(mc_result["mean_score_counts"][i])
+        for i in range(N_SCORES)
+    }
     result["monte_carlo_nps"] = mc_result["simulation_nps"].tolist()
     result["monte_carlo_nps_p05"] = mc_result["p05"]
     result["monte_carlo_nps_p50"] = mc_result["p50"]
     result["monte_carlo_nps_p95"] = mc_result["p95"]
+    result["monte_carlo_simulations"] = simulations
+    result["probabilistic_domain"] = "survey_scores_0_10"
+    result["monte_carlo_bayesian_parameter_sampling"] = bool(
+        mc_result["bayesian_parameter_sampling"]
+    )
+
+    # NPS remains derived from the score distribution/counts, never used as a
+    # probability-model input. For forecasts, the deterministic point estimate
+    # remains the NPS calculated from the Bayesian/posterior expected counts.
+    posterior_expected_counts = posterior * int(total_surveys)
+    point_counts = np.floor(posterior_expected_counts).astype(int)
+    remainder = int(total_surveys) - int(point_counts.sum())
+    if remainder > 0:
+        fractional = posterior_expected_counts - point_counts
+        for idx in np.argsort(-fractional)[:remainder]:
+            point_counts[idx] += 1
+
+    point = nps_from_score_counts(point_counts)
+    result["probabilistic_score_counts"] = {
+        f"score_{i}": int(point_counts[i]) for i in range(N_SCORES)
+    }
+    result["probabilistic_promoters"] = point["promoters"]
+    result["probabilistic_passives"] = point["passives"]
+    result["probabilistic_detractors"] = point["detractors"]
+    result["probabilistic_nps"] = point["nps"]
+    result["prediction_interval"] = {
+        "low": mc_result["p05"],
+        "high": mc_result["p95"],
+    }
 
     return result
+

@@ -10,7 +10,8 @@ def test_nps_predictor():
         predictor="nps",
         prediction=82.0,
         historical_values=[0.80, 0.82, 0.81, 0.83],
-        uncertainty=1.5,
+        score_distribution={f"score_{i}": 1.0 / 11.0 for i in range(11)},
+        total_surveys=250,
         samples=2000,
     )
 
@@ -65,11 +66,18 @@ def test_multiple_predictors():
     }
 
     for name, prediction in predictors.items():
+        kwargs = {}
+        if name == "nps":
+            kwargs = {
+                "score_distribution": {f"score_{i}": 1.0 / 11.0 for i in range(11)},
+                "total_surveys": 250,
+            }
         result = adapter.analyze_prediction(
             predictor=name,
             prediction=prediction,
             historical_values=[0.80, 0.82, 0.81],
             samples=1000,
+            **kwargs,
         )
 
         assert result.predictor == name

@@ -10,6 +10,12 @@ def test_predictors_use_different_historical_distributions():
         predictor="nps",
         prediction=82.0,
         historical_values=[70, 78, 81, 89, 94],
+        score_distribution={
+            "score_0": 0.01, "score_1": 0.01, "score_2": 0.01, "score_3": 0.02,
+            "score_4": 0.03, "score_5": 0.04, "score_6": 0.05, "score_7": 0.09,
+            "score_8": 0.14, "score_9": 0.25, "score_10": 0.35,
+        },
+        total_surveys=300,
         samples=3000,
     )
 
@@ -21,7 +27,7 @@ def test_predictors_use_different_historical_distributions():
     )
 
     assert nps.uncertainty != quality.uncertainty
-    assert nps.historical_samples == 5
+    assert nps.historical_samples == 0
     assert quality.historical_samples == 5
 
 
@@ -32,6 +38,8 @@ def test_nps_uses_nps_scale():
         predictor="nps",
         prediction=82.0,
         historical_values=[70, 75, 82, 88, 92],
+        score_distribution={f"score_{i}": 1.0 / 11.0 for i in range(11)},
+        total_surveys=250,
         samples=2000,
     )
 

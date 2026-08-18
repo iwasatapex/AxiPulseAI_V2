@@ -4,12 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Prefer the reproducible project venv (`.venv`, then legacy `venv`),
+# Prefer the canonical Python 3.13 project venv (`.venv313`),
 # falling back to the system interpreter only as a last resort.
-PYTHON=.venv/bin/python
-if [ ! -x "$PYTHON" ]; then
-  PYTHON=venv/bin/python
-fi
+# (Legacy `.venv`/`venv` Python 3.14 duplicates were removed.)
+PYTHON=.venv313/bin/python
 if [ ! -x "$PYTHON" ]; then
   PYTHON=python3
 fi

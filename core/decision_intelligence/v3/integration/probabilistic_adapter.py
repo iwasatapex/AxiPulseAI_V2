@@ -1,9 +1,18 @@
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import Mapping, Sequence
+
+import numpy as np
 
 from core.probabilistic import (
     ProbabilisticResult,
     UniversalProbabilisticAdapter as CoreProbabilisticAdapter,
+)
+from core.probabilistic.categorical_nps import (
+    from_monte_carlo as nps_from_monte_carlo,
+    from_observed_counts as nps_bayesian_from_counts,
+    from_prior_only as nps_bayesian_from_prior,
+    nps_from_score_counts,
 )
 
 
@@ -86,6 +95,115 @@ class UniversalProbabilisticAdapter:
             for v in values
         ]
 
+    def _analyze_nps(
+        self,
+        *,
+        observations: Sequence[float],
+        baseline: float,
+        samples: int,
+        score_distribution: Mapping[str, float] | Sequence[float] | None,
+        total_surveys: int | None,
+        observed_score_counts: Sequence[int] | None,
+        prior_strength: float,
+        seed: int,
+    ) -> PredictorProbabilisticResult:
+        """Run NPS uncertainty strictly on survey scores 0..10.
+
+        ``baseline`` is retained only for backward-compatible result shape.
+        It is NEVER used to generate Bayesian or Monte Carlo uncertainty.
+        """
+        if score_distribution is None:
+            raise ValueError(
+                "NPS probabilistic analysis requires an 11-bucket score_distribution "
+                "(score_0..score_10); scalar NPS uncertainty is prohibited."
+            )
+        if total_surveys is None or int(total_surveys) <= 0:
+            raise ValueError(
+                "NPS probabilistic analysis requires total_surveys > 0 so Monte Carlo "
+                "can sample actual 0..10 survey outcomes."
+            )
+
+        if isinstance(score_distribution, Mapping):
+            distribution = [
+                float(score_distribution.get(f"score_{i}", 0.0))
+                for i in range(11)
+            ]
+        else:
+            distribution = [float(v) for v in score_distribution]
+
+        if len(distribution) != 11:
+            raise ValueError("NPS score_distribution must contain exactly 11 buckets")
+
+        if observed_score_counts is not None:
+            bayesian = nps_bayesian_from_counts(
+                distribution,
+                observed_score_counts,
+                prior_strength=prior_strength,
+                metadata={"evidence": "observed_score_counts"},
+            )
+        else:
+            bayesian = nps_bayesian_from_prior(
+                distribution,
+                prior_strength=prior_strength,
+                metadata={"evidence": "model_score_distribution"},
+            )
+
+        mc = nps_from_monte_carlo(
+            bayesian,
+            total_surveys=int(total_surveys),
+            simulations=samples,
+            random_state=seed,
+        )
+
+        posterior = [float(v) for v in bayesian.posterior]
+        expected_nps = nps_from_score_counts(
+            mc["mean_score_counts"].round().astype(int)
+        )["nps"]
+        promoter_probability = float(sum(posterior[9:11]))
+
+        # Preserve the historical adapter result shape while making its
+        # semantics explicit: every uncertainty quantity is derived from
+        # the survey-score distribution, never from the scalar NPS baseline.
+        score_uncertainty = float(mc["p95"] - mc["p05"])
+        historical_samples = int(sum(observed_score_counts)) if observed_score_counts is not None else 0
+
+        return PredictorProbabilisticResult(
+            predictor="nps",
+            bayesian=SimpleNamespace(
+                probability=promoter_probability,
+                confidence=float(bayesian.credible_level),
+                posterior_mean=float(expected_nps),
+                posterior_std=score_uncertainty / 3.289707253 if score_uncertainty > 0 else 0.0,
+                samples=historical_samples,
+                posterior_score_distribution={f"score_{i}": posterior[i] for i in range(11)},
+                prior_type="dirichlet",
+            ),
+            monte_carlo=SimpleNamespace(
+                mean=float(np.mean(mc["simulation_nps"])) if len(mc["simulation_nps"]) else float(expected_nps),
+                p05=float(mc["p05"]),
+                p50=float(mc["p50"]),
+                p95=float(mc["p95"]),
+                probability_positive=float(np.mean(mc["simulation_nps"] >= 0.0)),
+                samples=int(mc["simulation_count"]),
+                uncertainty=score_uncertainty,
+                metadata={
+                    "distribution_domain": "survey_scores_0_10",
+                    "bayesian_parameter_sampling": bool(mc["bayesian_parameter_sampling"]),
+                    "nps_derived_from_score_counts": True,
+                    "scalar_nps_baseline_ignored_for_uncertainty": True,
+                },
+            ),
+            probability=promoter_probability,
+            confidence=float(bayesian.credible_level),
+            expected=float(np.mean(mc["simulation_nps"])),
+            downside=float(mc["p05"]),
+            upside=float(mc["p95"]),
+            simulations=int(mc["simulation_count"]),
+            uncertainty=score_uncertainty,
+            historical_samples=historical_samples,
+            result=None,
+        )
+
     def analyze(
         self,
         predictor: str,
@@ -93,7 +211,25 @@ class UniversalProbabilisticAdapter:
         baseline: float,
         uncertainty: float | None = None,
         samples: int = 10000,
+        *,
+        score_distribution: Mapping[str, float] | Sequence[float] | None = None,
+        total_surveys: int | None = None,
+        observed_score_counts: Sequence[int] | None = None,
+        prior_strength: float = 20.0,
+        seed: int = 0,
     ) -> PredictorProbabilisticResult:
+
+        if predictor == "nps":
+            return self._analyze_nps(
+                observations=observations,
+                baseline=float(baseline),
+                samples=int(samples),
+                score_distribution=score_distribution,
+                total_surveys=total_surveys,
+                observed_score_counts=observed_score_counts,
+                prior_strength=float(prior_strength),
+                seed=int(seed),
+            )
 
         values = [float(v) for v in observations]
 
@@ -242,6 +378,12 @@ class UniversalProbabilisticAdapter:
         historical_values: list[float] | None = None,
         uncertainty: float | None = None,
         samples: int = 10000,
+        *,
+        score_distribution: Mapping[str, float] | Sequence[float] | None = None,
+        total_surveys: int | None = None,
+        observed_score_counts: Sequence[int] | None = None,
+        prior_strength: float = 20.0,
+        seed: int = 0,
     ) -> PredictorProbabilisticResult:
 
         return self.analyze(
@@ -250,6 +392,11 @@ class UniversalProbabilisticAdapter:
             baseline=float(prediction),
             uncertainty=uncertainty,
             samples=samples,
+            score_distribution=score_distribution,
+            total_surveys=total_surveys,
+            observed_score_counts=observed_score_counts,
+            prior_strength=prior_strength,
+            seed=seed,
         )
 
 
@@ -262,6 +409,12 @@ def analyze(
     baseline: float,
     uncertainty: float | None = None,
     samples: int = 10000,
+    *,
+    score_distribution: Mapping[str, float] | Sequence[float] | None = None,
+    total_surveys: int | None = None,
+    observed_score_counts: Sequence[int] | None = None,
+    prior_strength: float = 20.0,
+    seed: int = 0,
 ) -> PredictorProbabilisticResult:
     return _default_adapter.analyze(
         predictor=predictor,
@@ -269,6 +422,11 @@ def analyze(
         baseline=baseline,
         uncertainty=uncertainty,
         samples=samples,
+        score_distribution=score_distribution,
+        total_surveys=total_surveys,
+        observed_score_counts=observed_score_counts,
+        prior_strength=prior_strength,
+        seed=seed,
     )
 
 
@@ -278,6 +436,12 @@ def analyze_prediction(
     historical_values: list[float] | None = None,
     uncertainty: float | None = None,
     samples: int = 10000,
+    *,
+    score_distribution: Mapping[str, float] | Sequence[float] | None = None,
+    total_surveys: int | None = None,
+    observed_score_counts: Sequence[int] | None = None,
+    prior_strength: float = 20.0,
+    seed: int = 0,
 ) -> PredictorProbabilisticResult:
     return _default_adapter.analyze_prediction(
         predictor=predictor,
@@ -285,4 +449,9 @@ def analyze_prediction(
         historical_values=historical_values,
         uncertainty=uncertainty,
         samples=samples,
+        score_distribution=score_distribution,
+        total_surveys=total_surveys,
+        observed_score_counts=observed_score_counts,
+        prior_strength=prior_strength,
+        seed=seed,
     )

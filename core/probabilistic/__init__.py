@@ -1,4 +1,4 @@
-from .prediction_envelope import UniversalPredictionEnvelope, wrap_prediction
+from .prediction_envelope import UniversalPredictionEnvelope, wrap_prediction, wrap_nps_prediction
 from .adapter import UniversalProbabilisticAdapter, adapt
 from .result import (
     BayesianInfo,
@@ -21,6 +21,7 @@ __all__ = [
     "BayesianInfo",
     "MonteCarloInfo",
     "UniversalProbabilisticAdapter",
+    "wrap_nps_prediction",
     "adapt",
     "adapt_domain_prediction",
     "adapt_target_state_prediction",
