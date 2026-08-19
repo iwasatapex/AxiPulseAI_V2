@@ -168,6 +168,8 @@ def build_adie_detail(
     targets: Mapping[str, Any] | None = None,
     observed: float | None = None,
     observed_metrics: Sequence[str] | None = None,
+    observed_nps: float | None = None,
+    observed_state: Mapping[str, Any] | None = None,
     horizon: int | None = None,
 ) -> dict[str, Any]:
     """
@@ -310,9 +312,128 @@ def build_adie_detail(
         "sensitivity_detail": sensitivity_detail,
         "trend_detail": trend_detail,
         "agreement": agreement_detail,
+        "observed_state": _build_observed_state_detail(
+            observed_state=observed_state,
+            observed=observed,
+            observed_metrics=observed_metrics,
+            observed_nps=observed_nps,
+        ),
+        "observed_evidence": _build_observed_evidence(
+            observed_state=observed_state,
+            observed=observed,
+            observed_metrics=observed_metrics,
+            observed_nps=observed_nps,
+        ),
+        "observed_nps_available": (
+            observed_nps is not None
+            or (
+                observed_state is not None
+                and observed_state.get("nps") is not None
+            )
+        ),
+        "current_state_gaps": _build_current_state_gaps(
+            observed=observed,
+            observed_nps=observed_nps,
+            observed_state=observed_state,
+            targets=targets,
+        ),
         "explanation": enhanced_explanation,
         "best_scenario": best_scenario,
     }
+
+
+def _build_observed_state_detail(
+    *,
+    observed_state: Mapping[str, Any] | None,
+    observed: float | None,
+    observed_metrics: Sequence[str] | None,
+    observed_nps: float | None,
+) -> dict[str, Any]:
+    """Build the first-class observed current-state section.
+
+    Observed OH and observed NPS are both first-class current-state evidence at
+    cutoff T, kept strictly separate from forecast-day scenarios. The observed
+    NPS value is taken only from caller-provided state and is NEVER the
+    forecast/recursive/predicted NPS. No value is fabricated when absent.
+    """
+    state: dict[str, Any] = {}
+    if observed_state is not None:
+        for metric in observed_metrics or []:
+            if observed_state.get(metric) is not None:
+                state[metric] = observed_state[metric]
+    if observed is not None and "operations_health" not in state:
+        state["operations_health"] = observed
+    if observed_nps is not None and "nps" not in state:
+        state["nps"] = observed_nps
+    return state
+
+
+def _build_observed_evidence(
+    *,
+    observed_state: Mapping[str, Any] | None,
+    observed: float | None,
+    observed_metrics: Sequence[str] | None,
+    observed_nps: float | None,
+) -> dict[str, Any]:
+    """Build per-metric observed evidence with explicit metric identity.
+
+    ``operations_health`` evidence and ``nps`` evidence are kept distinct so the
+    ADIE evidence model knows which observed KPI is OH and which is NPS. Observed
+    NPS is scalar current-state evidence and is NEVER an input to the 0..10
+    Bayesian/Monte-Carlo NPS uncertainty path.
+    """
+    evidence: dict[str, Any] = {}
+    for metric in observed_metrics or []:
+        value = None
+        if observed_state is not None and observed_state.get(metric) is not None:
+            value = observed_state[metric]
+        elif metric == "operations_health":
+            value = observed
+        elif metric == "nps":
+            value = observed_nps
+        if value is not None:
+            evidence[metric] = {"value": value, "source": "observed"}
+    return evidence
+
+
+def _build_current_state_gaps(
+    *,
+    observed: float | None,
+    observed_nps: float | None,
+    observed_state: Mapping[str, Any] | None,
+    targets: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Deterministic current-state gaps (observed vs target).
+
+    These are direct current-state comparisons and are NEVER confused with
+    ``probability_of_target`` (which comes from the probabilistic
+    score-distribution path).
+    """
+    targets = dict(targets or {})
+    target_oh = targets.get("target_oh") or targets.get("target_operations_health")
+    target_nps = targets.get("target_nps")
+
+    oh = observed
+    if oh is None and observed_state is not None:
+        oh = observed_state.get("operations_health")
+    nps = observed_nps
+    if nps is None and observed_state is not None:
+        nps = observed_state.get("nps")
+
+    gaps: dict[str, Any] = {}
+    if oh is not None and target_oh is not None and _finite(float(oh)) and _finite(float(target_oh)):
+        gaps["operations_health"] = {
+            "observed": _round(float(oh)),
+            "target": _round(float(target_oh)),
+            "gap": _round(float(target_oh) - float(oh)),
+        }
+    if nps is not None and target_nps is not None and _finite(float(nps)) and _finite(float(target_nps)):
+        gaps["nps"] = {
+            "observed": _round(float(nps)),
+            "target": _round(float(target_nps)),
+            "gap": _round(float(target_nps) - float(nps)),
+        }
+    return gaps
 
 
 def _build_top_recommendations(

@@ -21,6 +21,10 @@ class ADIEV3DecisionRequest(BaseModel):
     scenarios: list[dict[str, Any]] | None = None
     cutoff: Any = None
     provenance: Mapping[str, Any] | None = None
+    observed: float | None = None
+    observed_metrics: list[str] | None = None
+    observed_nps: float | None = None
+    observed_state: Mapping[str, Any] | None = None
 
     @field_validator("observations", mode="before")
     @classmethod

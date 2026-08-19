@@ -45,6 +45,8 @@ def compose_decision_package(
     targets: Mapping[str, Any] | None = None,
     observed: float | None = None,
     observed_metrics: Sequence[str] | None = None,
+    observed_nps: float | None = None,
+    observed_state: Mapping[str, Any] | None = None,
     horizon: int | None = None,
 ) -> dict[str, Any]:
     """
@@ -104,6 +106,8 @@ def compose_decision_package(
                 targets=targets,
                 observed=observed,
                 observed_metrics=observed_metrics,
+                observed_nps=observed_nps,
+                observed_state=observed_state,
                 horizon=horizon,
             )
             package["details"] = detail
