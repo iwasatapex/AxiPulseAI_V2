@@ -610,9 +610,21 @@ class ForecastOrchestrator(ForecastAIEngine):
         # 1. Real forecast cutoff = forecast start date (T).
         cutoff = result.start_date or datetime.date.today().isoformat()
 
-        # 2. Observed current-known inputs (normalized to [0,1] for the
-        #    Bayesian engine). Only observed KPI fields are used.
-        observed_metrics = {
+        # 2. Observed current-known inputs at cutoff T (from the caller-supplied
+        #    state ONLY — never from the forecast timeline or recursive state).
+        #
+        #    Observed OH and observed NPS are BOTH first-class current-state
+        #    evidence with metric identity preserved:
+        #      - observed_oh   -> observed_metrics / observed_state
+        #      - observed_nps  -> observed_metrics / observed_state (first-class)
+        #
+        #    The GENERIC Beta-Bernoulli health posterior consumes only normalized
+        #    KPI ratios and MUST NOT treat scalar NPS as a generic KPI ratio
+        #    without metric identity. Scalar observed NPS is therefore kept out
+        #    of the generic ``observations`` list and exposed separately. NPS
+        #    uncertainty continues to come exclusively from the 0..10
+        #    survey-score distribution, never from scalar NPS.
+        observed_values = {
             "operations_health": observed_state.get("operations_health")
             or observed_state.get("operational_health"),
             "nps": observed_state.get("nps"),
@@ -622,13 +634,25 @@ class ForecastOrchestrator(ForecastAIEngine):
             "release": observed_state.get("release"),
             "transfer": observed_state.get("transfer"),
         }
+
+        # All genuinely available observed metrics (including NPS) for the
+        # first-class observed_metrics / observed_state / observed_evidence.
         observed_metrics = {
             key: value
-            for key, value in observed_metrics.items()
+            for key, value in observed_values.items()
             if value is not None
         }
+        observed_nps = observed_values.get("nps")
+        observed_nps_available = observed_nps is not None
 
-        if not observed_metrics:
+        # Generic Beta-Bernoulli inputs: normalized KPI ratios EXCLUDING scalar
+        # NPS (metric identity preserved; NPS is never a generic health ratio).
+        generic_observed = {
+            key: value
+            for key, value in observed_metrics.items()
+            if key != "nps"
+        }
+        if not generic_observed:
             return {
                 "status": "skipped",
                 "reason": "no observed metrics available for ADIE V3",
@@ -637,7 +661,7 @@ class ForecastOrchestrator(ForecastAIEngine):
         adapter = UniversalProbabilisticAdapter()
 
         observations: List[float] = []
-        for metric, value in observed_metrics.items():
+        for metric, value in generic_observed.items():
             try:
                 normalized = adapter._normalize(
                     metric,
@@ -855,12 +879,44 @@ class ForecastOrchestrator(ForecastAIEngine):
             horizon=result.horizon,
         )
 
+        # 7a. First-class observed-state evidence (observed OH + observed NPS).
+        #     Observed state is the caller-supplied current state at cutoff T;
+        #     it is kept strictly separate from forecast-day scenarios.
+        observed_state_detail = dict(observed_metrics)  # OH, NPS, KPI KPIs (available only)
+        observed_evidence = {
+            metric: {"value": observed_metrics[metric], "source": "observed"}
+            for metric in observed_metrics
+        }
+
+        # Deterministic current-state gaps vs explicit targets (never confused
+        # with probability_of_target which comes from the probabilistic path).
+        current_state_gaps = {}
+        if observed_baseline_oh is not None and targets.get("target_oh") is not None:
+            current_state_gaps["operations_health"] = {
+                "observed": float(observed_baseline_oh),
+                "target": targets["target_oh"],
+                "gap": round(float(targets["target_oh"]) - float(observed_baseline_oh), 4),
+            }
+        if observed_nps is not None and targets.get("target_nps") is not None:
+            current_state_gaps["nps"] = {
+                "observed": float(observed_nps),
+                "target": targets["target_nps"],
+                "gap": round(float(targets["target_nps"]) - float(observed_nps), 4),
+            }
+
         # 7. Fold Forecast AI outputs into ONE canonical decision payload.
         return {
             "status": "success",
             "cutoff": cutoff_ts,
             "provenance": provenance,
             "observed_metrics": sorted(observed_metrics.keys()),
+            "observed_nps": (
+                float(observed_nps) if observed_nps is not None else None
+            ),
+            "observed_nps_available": observed_nps_available,
+            "observed_state": observed_state_detail,
+            "observed_evidence": observed_evidence,
+            "current_state_gaps": current_state_gaps,
             "package": compose_decision_package(
                 ProbabilisticDecisionService.to_dict(package),
                 recommendation_output=recommendation_output,
@@ -871,6 +927,10 @@ class ForecastOrchestrator(ForecastAIEngine):
                 targets=targets or None,
                 observed=observed_baseline_oh,
                 observed_metrics=sorted(observed_metrics.keys()),
+                observed_nps=(
+                    float(observed_nps) if observed_nps is not None else None
+                ),
+                observed_state=observed_state_detail,
                 horizon=result.horizon,
             ),
         }

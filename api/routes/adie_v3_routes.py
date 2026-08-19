@@ -34,6 +34,8 @@ def create_decision(request: ADIEV3DecisionRequest) -> ADIEDecisionResponse:
             sensitivity_output=request.sensitivity_output,
             observed=request.observed,
             observed_metrics=request.observed_metrics,
+            observed_nps=request.observed_nps,
+            observed_state=request.observed_state,
             horizon=request.horizon,
         )
     else:

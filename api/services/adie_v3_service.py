@@ -187,6 +187,8 @@ class ADIEV3Service:
         sensitivity_output: Mapping[str, Any] | None = None,
         observed: float | None = None,
         observed_metrics: Sequence[str] | None = None,
+        observed_nps: float | None = None,
+        observed_state: Mapping[str, Any] | None = None,
         horizon: int | None = None,
     ) -> ProbabilisticDecisionPackage:
         """Run the V3 scenario-based decision service.
@@ -236,6 +238,8 @@ class ADIEV3Service:
         targets: Mapping[str, Any] | None = None,
         observed: float | None = None,
         observed_metrics: Sequence[str] | None = None,
+        observed_nps: float | None = None,
+        observed_state: Mapping[str, Any] | None = None,
         horizon: int | None = None,
     ) -> dict[str, Any]:
         """Run the canonical V3 decision pipeline and fold Forecast AI
@@ -268,6 +272,12 @@ class ADIEV3Service:
             trend_output=trend_output,
             sensitivity_output=sensitivity_output,
             agreement=agreement,
+            targets=targets,
+            observed=observed,
+            observed_metrics=observed_metrics,
+            observed_nps=observed_nps,
+            observed_state=observed_state,
+            horizon=horizon,
         )
 
 
