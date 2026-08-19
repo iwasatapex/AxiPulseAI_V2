@@ -58,3 +58,10 @@ class RecommendationResult:
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Multiple generated-and-evaluated candidate scenarios (rank, predicted
+    # vs target OH/NPS, feasibility, probabilistic interval, etc.) -- copied
+    # through from OptimizationResult.metadata["ranked_candidates"] so GUI
+    # consumers of RecommendationResult are not limited to a single
+    # best-solution's per-field advice. Additive field; existing consumers
+    # that only read `recommendations` are unaffected.
+    candidates: List[Dict[str, Any]] = field(default_factory=list)

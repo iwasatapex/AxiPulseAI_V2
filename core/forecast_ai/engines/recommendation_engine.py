@@ -99,7 +99,12 @@ class RecommendationEngine(ForecastAIEngine):
                 "recommendations": [asdict(r) for r in rec_result.recommendations],
                 "warnings": rec_result.warnings,
                 "errors": rec_result.errors,
-                "metadata": rec_result.metadata
+                "metadata": rec_result.metadata,
+                # Multiple generated-and-evaluated candidates (rank, predicted
+                # vs target OH/NPS, feasibility, probabilistic interval, key
+                # changes). Preserved so GUI/API consumers are not limited to a
+                # single best-solution recommendation.
+                "candidates": list(getattr(rec_result, "candidates", []) or []),
             }
         }
 

@@ -1219,6 +1219,15 @@ class ForecastOrchestrator(ForecastAIEngine):
             final_count=len(flat_recs),
         )
 
+        # Multiple generated-and-evaluated candidates are preserved through the
+        # pipeline so GUI/API consumers can render several independent options,
+        # not only the single best recommendation. Never fabricated.
+        candidates = (
+            list(rec_block.get("candidates") or [])
+            if isinstance(rec_block, dict)
+            else []
+        )
+
         return {
             "status": status,
             "success": success,
@@ -1228,6 +1237,7 @@ class ForecastOrchestrator(ForecastAIEngine):
             "warnings": warnings,
             "errors": errors,
             "metadata": metadata,
+            "candidates": candidates,
             "diagnostics": diag,
         }
 

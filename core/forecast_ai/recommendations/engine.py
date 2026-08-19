@@ -51,7 +51,60 @@ class RecommendationEngine:
         if best is None:
             best = solutions[0]
 
+        # Multiple candidates, not just `best`: pass through the ranked,
+        # generated-and-evaluated scenarios the optimizer already produced.
+        # These are operational states created by ReverseOptimizer, not a scan
+        # of pre-existing models.
+        candidates = list((optimization_result.metadata or {}).get("ranked_candidates") or [])
+
         recommendations = self._deduplicate(self._extract_recommendations(best))
+
+        # Preserve the existing actionable recommendation contract while also
+        # exposing one explicit alternative recommendation per generated
+        # candidate.  Candidate alternatives are marked informational so
+        # downstream consumers can render them without treating every scenario
+        # as an independent production directive.
+        alternative_recommendations = []
+        for candidate in candidates:
+            if candidate.get("name") == "Current state":
+                continue
+            changes = candidate.get("key_operational_changes") or candidate.get("state_changes") or {}
+            if not changes:
+                continue
+            first_field, first_change = next(iter(changes.items()))
+            title, description, category = self.templates.get_template(first_field)
+            alternative_recommendations.append(
+                Recommendation(
+                    id=f"candidate-{candidate.get('rank', len(alternative_recommendations) + 1)}-{uuid.uuid4().hex[:8]}",
+                    title=f"Candidate {candidate.get('rank', '?')}: {title}",
+                    description=(
+                        f"Generated alternative state. {description} "
+                        f"Predicted OH={candidate.get('predicted_operations_health')}, "
+                        f"NPS={candidate.get('predicted_nps')}."
+                    ),
+                    category=category,
+                    priority=Priority.INFORMATIONAL,
+                    difficulty=self.templates.get_difficulty(first_change),
+                    confidence=1.0 if candidate.get("feasible") else 0.0,
+                    actions=[],
+                    reasoning=candidate.get("explanation", ""),
+                    optimization_score=float(candidate.get("objective_score") or 0.0),
+                    target_kpi=first_field,
+                    direction="increase" if first_change > 0 else "decrease",
+                    magnitude=abs(float(first_change)),
+                    metadata={
+                        "candidate": True,
+                        "candidate_rank": candidate.get("rank"),
+                        "generated": True,
+                        "source": "reverse_optimizer_generated_state",
+                        "feasible": bool(candidate.get("feasible")),
+                        "state": candidate.get("state", {}),
+                        "predicted_operations_health": candidate.get("predicted_operations_health"),
+                        "predicted_nps": candidate.get("predicted_nps"),
+                        "confidence_interval": candidate.get("confidence_interval"),
+                    },
+                )
+            )
         ranked = self.ranker.rank(recommendations)
         conflicts = self.conflict_detector.detect_conflicts(ranked)
         warnings = [f"Conflict detected: {c[2]}" for c in conflicts] if conflicts else []
@@ -61,17 +114,27 @@ class RecommendationEngine:
                 "NOT claimed achieved, and estimated gains are assumptions."
             )
 
-        # Explicitly never claim achievement for best-effort: tag every rec.
-        for rec in ranked:
+        # Explicitly never claim achievement for best-effort: tag every rec,
+        # including the generated candidate alternatives.  A candidate
+        # alternative is still a recommendation and must never masquerade as a
+        # target-achieved directive when the optimizer only produced a
+        # best-effort result.
+        for rec in ranked + alternative_recommendations:
             rec.metadata = dict(rec.metadata or {})
             rec.metadata["goal_achieved"] = achieved
             rec.metadata["best_effort"] = best_effort
             if best_effort:
                 rec.metadata["gain_basis"] = "assumption_target_not_reached"
 
+        # Alternatives are intentionally appended after the canonical best
+        # recommendation(s), so existing consumers retain their primary
+        # recommendation while GUI consumers can render the generated options.
+        all_recommendations = ranked + alternative_recommendations
+
         return RecommendationResult(
             success=True,
-            recommendations=ranked,
+            recommendations=all_recommendations,
+            candidates=candidates,
             warnings=warnings,
             errors=[],
             metadata={
@@ -79,6 +142,7 @@ class RecommendationEngine:
                 "conflicts_detected": len(conflicts),
                 "goal_achieved": achieved,
                 "best_effort": best_effort,
+                "total_candidates_exposed": len(candidates),
             }
         )
 

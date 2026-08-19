@@ -156,5 +156,14 @@ class PredictionResult:
     bayesian_score_distribution: Optional[Dict[str, float]] = None
     score_counts: Optional[Dict[str, int]] = None
 
+    # Canonical Monte Carlo NPS percentiles (-100..100) computed by the
+    # production Bayesian/Monte-Carlo NPS path from the 0..10 survey-score
+    # distribution. Preserved on the result so consumers (e.g. reverse
+    # optimizer candidate summaries) read EXACTLY the interval production
+    # computed — never an independent re-derivation.
+    monte_carlo_nps_p05: Optional[float] = None
+    monte_carlo_nps_p50: Optional[float] = None
+    monte_carlo_nps_p95: Optional[float] = None
+
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)

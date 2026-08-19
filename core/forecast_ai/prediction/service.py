@@ -259,6 +259,10 @@ class PredictionService:
                 "score_counts"
             )
 
+            def _mc(key):
+                val = result.get(key)
+                return float(val) if val is not None else None
+
             return {
                 "nps": (
                     float(nps_value)
@@ -278,6 +282,13 @@ class PredictionService:
                     if isinstance(score_counts, dict)
                     else None
                 ),
+                # Canonical Monte Carlo NPS percentiles produced by the
+                # production Bayesian/Monte-Carlo path. Preserved so consumers
+                # read the exact interval production computed (no independent
+                # re-derivation).
+                "monte_carlo_nps_p05": _mc("monte_carlo_nps_p05"),
+                "monte_carlo_nps_p50": _mc("monte_carlo_nps_p50"),
+                "monte_carlo_nps_p95": _mc("monte_carlo_nps_p95"),
             }
 
         if isinstance(result, tuple):
@@ -287,12 +298,18 @@ class PredictionService:
                 "nps": float(value),
                 "bayesian_score_distribution": None,
                 "score_counts": None,
+                "monte_carlo_nps_p05": None,
+                "monte_carlo_nps_p50": None,
+                "monte_carlo_nps_p95": None,
             }
 
         return {
             "nps": float(result),
             "bayesian_score_distribution": None,
             "score_counts": None,
+            "monte_carlo_nps_p05": None,
+            "monte_carlo_nps_p50": None,
+            "monte_carlo_nps_p95": None,
         }
 
     def predict(self, request: PredictionRequest) -> PredictionResult:
@@ -339,6 +356,15 @@ class PredictionService:
                     ]
                 ),
                 score_counts=nps_result_data["score_counts"],
+                monte_carlo_nps_p05=nps_result_data.get(
+                    "monte_carlo_nps_p05"
+                ),
+                monte_carlo_nps_p50=nps_result_data.get(
+                    "monte_carlo_nps_p50"
+                ),
+                monte_carlo_nps_p95=nps_result_data.get(
+                    "monte_carlo_nps_p95"
+                ),
                 warnings=[],
                 errors=errors,
             )
@@ -408,6 +434,21 @@ class PredictionService:
             ),
             score_counts=(
                 nps_result_data.get("score_counts")
+                if "nps_result_data" in locals()
+                else None
+            ),
+            monte_carlo_nps_p05=(
+                nps_result_data.get("monte_carlo_nps_p05")
+                if "nps_result_data" in locals()
+                else None
+            ),
+            monte_carlo_nps_p50=(
+                nps_result_data.get("monte_carlo_nps_p50")
+                if "nps_result_data" in locals()
+                else None
+            ),
+            monte_carlo_nps_p95=(
+                nps_result_data.get("monte_carlo_nps_p95")
                 if "nps_result_data" in locals()
                 else None
             ),

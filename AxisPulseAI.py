@@ -195,6 +195,38 @@ def do_reverse():
                 print()
                 print("Note:", result.errors[0])
 
+            # Multiple generated candidates (not just the single closest one).
+            # These come from result.payload["metadata"]["ranked_candidates"],
+            # populated by ReverseOptimizer.optimize() from the genuinely
+            # generated-and-evaluated solutions -- never a scan/selection over
+            # existing trained models.
+            candidates = (result.payload.get("metadata") or {}).get("ranked_candidates") or []
+            if len(candidates) > 1:
+                print()
+                print("=" * 80)
+                print(f"ALL GENERATED CANDIDATES ({len(candidates)})")
+                print("=" * 80)
+                for c in candidates:
+                    print()
+                    print(f"[{c['rank']}] {c['name']}"
+                          f"{'  (FEASIBLE)' if c['feasible'] else '  (does not meet target)'}")
+                    oh_err = c.get("operations_health_error")
+                    nps_err = c.get("nps_error")
+                    if c["predicted_operations_health"] is not None:
+                        print(f"    OH:  {c['predicted_operations_health']:.2f}"
+                              + (f" (target {c['target_operations_health']:.2f}, "
+                                 f"err {oh_err:+.2f})" if oh_err is not None else ""))
+                    if c["predicted_nps"] is not None:
+                        print(f"    NPS: {c['predicted_nps']:.2f}"
+                              + (f" (target {c['target_nps']:.2f}, "
+                                 f"err {nps_err:+.2f})" if nps_err is not None else ""))
+                    ci = c.get("confidence_interval")
+                    if ci:
+                        print(f"    NPS 90% interval: [{ci['p05']:.1f}, {ci['p95']:.1f}]"
+                              f" (median {ci['p50']:.1f})")
+                    print(f"    {c['explanation']}")
+                    print(f"    Why this rank: {c['rank_reason']}")
+
     except Exception as e:
         print(f"{C.RED}Reverse optimizer failed:{C.RESET}")
         print(e)
