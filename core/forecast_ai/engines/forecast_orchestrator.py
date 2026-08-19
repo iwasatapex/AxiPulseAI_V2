@@ -132,16 +132,29 @@ class ForecastOrchestrator(ForecastAIEngine):
                 )
                 pred_result = self.service.predict(pred_req)
 
+                # Forecast output consistency: the day's KPI values on the
+                # timeline come from the SAME post-prediction result as OH/NPS
+                # (pred_result), not from the scenario-modified INPUT state.
+                # The production prediction carries the KPITransition output;
+                # the injected/test predictor path leaves KPIs None, in which
+                # case we fall back to the input state so the timeline stays
+                # populated (no None KPI cells).
+                out_quality = pred_result.quality if pred_result.quality is not None else modified_state.quality
+                out_competency = pred_result.competency if pred_result.competency is not None else modified_state.competency
+                out_attendance = pred_result.attendance if pred_result.attendance is not None else modified_state.attendance
+                out_release = pred_result.release if pred_result.release is not None else modified_state.release
+                out_transfer = pred_result.transfer if pred_result.transfer is not None else modified_state.transfer
+
                 forecast_payload = {
                     "timeline": [
                         {
                             "operations_health": pred_result.operations_health,
                             "nps": pred_result.nps,
-                            "quality": modified_state.quality,
-                            "competency": modified_state.competency,
-                            "transfer": modified_state.transfer,
-                            "release": modified_state.release,
-                            "attendance": modified_state.attendance,
+                            "quality": out_quality,
+                            "competency": out_competency,
+                            "transfer": out_transfer,
+                            "release": out_release,
+                            "attendance": out_attendance,
                         }
                     ]
                 }
@@ -262,11 +275,11 @@ class ForecastOrchestrator(ForecastAIEngine):
                     date=forecast_date.isoformat(),
                     operations_health=oh_val,
                     nps=nps_val,
-                    quality=modified_state.quality,
-                    competency=modified_state.competency,
-                    transfer=modified_state.transfer,
-                    release=modified_state.release,
-                    attendance=modified_state.attendance,
+                    quality=out_quality,
+                    competency=out_competency,
+                    transfer=out_transfer,
+                    release=out_release,
+                    attendance=out_attendance,
                     confidence=confidence,
                     risk=risk,
                     notes=f"Scenario: {request.scenario or 'baseline'}",
