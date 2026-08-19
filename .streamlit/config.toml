@@ -1,9 +1,13 @@
 [theme]
-base = "light"
-primaryColor = "#4f8bf9"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f5f7"
-textColor = "#111827"
+base = "dark"
+
+# Optional: Customize specific dark elements if you want to tweak colors
+primaryColor = "#ff4b4b"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#fafafa"
+font = "sans serif"
+
 
 [server]
 headless = true
