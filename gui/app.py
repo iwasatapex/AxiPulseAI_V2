@@ -117,9 +117,9 @@ def main() -> None:
     # Current active family shown in the sidebar for clarity — the active
     # model is never silently changed, only ever reflected here.
     if active:
-        c.status_pill(f"Active: {active}", "active")
+        c.status_pill(f"Active: {active}", "active", sidebar=True)
     else:
-        c.status_pill("No active model", "none")
+        c.status_pill("No active model", "none", sidebar=True)
         st.sidebar.caption("Select one on **Models**.")
 
     # Honor cross-page navigation requests (e.g. a zero-model state offering

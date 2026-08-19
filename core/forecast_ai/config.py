@@ -32,13 +32,22 @@ CACHE_TTL = 300
 MAX_ITERATIONS = 1000
 TOLERANCE = 0.01
 
-# KPI bounds (for optimization and validation)
+# KPI canonical hard bounds (for optimization and validation).
+# These are the single source of truth for every generated operational state:
+#   quality     60..100
+#   competency  55..100
+#   attendance  65..100
+#   release     50..100
+#   transfer     0..20
+# A state outside these bounds is operationally invalid and must NEVER be
+# generated, returned as a recommended state, exposed as a feasible
+# candidate, or used to claim the target was achieved.
 KPI_BOUNDS = {
-    'quality': (0, 100),
-    'competency': (0, 100),
-    'attendance': (0, 100),
-    'release': (0, 100),
-    'transfer': (0, 100)
+    'quality': (60, 100),
+    'competency': (55, 100),
+    'attendance': (65, 100),
+    'release': (50, 100),
+    'transfer': (0, 20)
 }
 
 # Trend thresholds

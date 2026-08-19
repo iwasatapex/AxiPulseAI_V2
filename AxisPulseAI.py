@@ -233,60 +233,6 @@ def do_reverse():
 
 
 
-def do_target_state():
-    section("TARGET STATE ENGINE")
-
-    print(f"{C.CYAN}🧠 AxiPulseAI Target State Engine{C.RESET}")
-
-    target_oh = input("Target OH (blank skip): ").strip()
-    target_nps = input("Target NPS (blank skip): ").strip()
-
-    try:
-        from core.target_state_engine import TargetStateEngine
-
-        engine = TargetStateEngine()
-
-        print()
-        print("Searching required operational state...")
-        print("-" * 80)
-
-        targets = {}
-        if target_oh:
-            targets["operational_health"] = float(target_oh)
-        if target_nps:
-            targets["nps"] = float(target_nps)
-        if not targets:
-            print("Enter at least one target before starting the search.")
-            return
-
-        result = engine.find_target_state(targets=targets)
-
-        if result:
-            print()
-            print("TARGET STATE RESULT")
-            print("=" * 80)
-
-            consensus = result["consensus"]
-            print("Predicted OH:", round(consensus["oh"], 3))
-            print("Predicted NPS:", round(consensus["nps"], 3))
-
-            print()
-            print("Recommended operational state:")
-
-            for k, v in result["recommended_state"].items():
-                print(f"{k.replace('_', ' ').title():20}: {v:.2f}")
-
-            print()
-            print("Distance:", round(result["distance"],3))
-
-        else:
-            print("No reachable target state found")
-
-    except Exception as e:
-        print(f"{C.RED}Target State Engine failed:{C.RESET}")
-        print(e)
-
-
 def do_surprise():
     section("SURPRISE")
 
@@ -359,9 +305,8 @@ def main_menu():
         print(f" {C.GREEN}2{C.RESET} - Predict")
         print(f" {C.GREEN}3{C.RESET} - Forecast OH/NPS")
         print(f" {C.GREEN}4{C.RESET} - Reverse Optimization")
-        print(f" {C.GREEN}5{C.RESET} - Target State Engine")
-        print(f" {C.GREEN}6{C.RESET} - 👩 ADIE Decision Intelligence")
-        print(f" {C.GREEN}7{C.RESET} - Exit")
+        print(f" {C.GREEN}5{C.RESET} - 👩 ADIE Decision Intelligence")
+        print(f" {C.GREEN}6{C.RESET} - Exit")
 
         choice = input(f"\n{C.BOLD}Choice: {C.RESET}").strip()
 
@@ -376,12 +321,9 @@ def main_menu():
             do_reverse()
 
         elif choice == "5":
-            do_target_state()
-
-        elif choice == "6":
             do_surprise()
 
-        elif choice == "7":
+        elif choice == "6":
             print(f"{C.CYAN}Goodbye.{C.RESET}")
             break
         else:

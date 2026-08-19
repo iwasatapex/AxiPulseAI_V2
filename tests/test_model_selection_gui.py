@@ -282,28 +282,6 @@ def test_find_target_state_invalid_family_raises_no_fallback(models_dir, monkeyp
     assert STATE.get_active_family() == "alpha"
 
 
-def test_reverse_optimize_forwards_family(monkeypatch):
-    captured = {}
-
-    def _fake_find(targets, **kwargs):
-        captured["targets"] = targets
-        captured["kwargs"] = kwargs
-        return {
-            "recommended_state": {"quality": 90.0},
-            "consensus": {"oh": 90.0},
-            "distance": 0.0,
-            "leaderboards": {},
-            "active_family": kwargs.get("family"),
-        }
-
-    monkeypatch.setattr(svc, "find_target_state", _fake_find)
-    out = svc.reverse_optimize("OH", 90.0, family="beta")
-    assert captured["targets"] == {"operational_health": 90.0}
-    assert captured["kwargs"]["family"] == "beta"
-    assert captured["kwargs"]["total_candidates"] == 20000
-    assert out["active_family"] == "beta"
-
-
 # ============================================================
 # Never silently fall back from an explicit selection
 # ============================================================

@@ -10,8 +10,10 @@ def test_AxisPulseAI_surface():
     assert hasattr(module, "do_predict")
     assert hasattr(module, "do_forecast")
     assert hasattr(module, "do_reverse")
-    assert hasattr(module, "do_target_state")
     assert hasattr(module, "do_surprise")
     assert hasattr(module, "main_menu")
     assert hasattr(module, "ask")
     assert hasattr(module, "C")
+    # The legacy Target State Engine user-facing path has been removed; the
+    # CLI now routes reverse/target-state exclusively through ReverseOptimizer.
+    assert not hasattr(module, "do_target_state")

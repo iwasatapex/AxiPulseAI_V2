@@ -219,9 +219,19 @@ def brand_header(subtitle: Optional[str] = None, meta: Optional[List[Dict[str, s
     st.divider()
 
 
-def status_pill(label: str, status: str = "none") -> None:
-    """Render one semantic status pill (ready/degraded/error/etc.)."""
-    st.markdown(_status_pill_html(label, status), unsafe_allow_html=True)
+def status_pill(label: str, status: str = "none", sidebar: bool = False) -> None:
+    """Render one semantic status pill (ready/degraded/error/etc.).
+
+    By default it renders in the main column (Streamlit default). Pass
+    ``sidebar=True`` to render it into the sidebar instead — used by the
+    app's "Active model" indicator so it does not leak into the top of the
+    main column above the application header.
+    """
+    html = _status_pill_html(label, status)
+    if sidebar:
+        st.sidebar.markdown(html, unsafe_allow_html=True)
+    else:
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def page_title(title: str, help_text: Optional[str] = None, eyebrow: Optional[str] = None) -> None:

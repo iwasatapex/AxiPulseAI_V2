@@ -45,9 +45,11 @@ class TestSensitivity(unittest.TestCase):
 
     def test_bounds_respected(self):
         gen = ExperimentGenerator()
-        state = {"quality": 0.0, "competency": 100.0}  # at extremes
+        # Canonical hard-bound extremes: quality at its min (60), competency at
+        # its max (100). A +/- step must not escape the canonical bounds.
+        state = {"quality": 60.0, "competency": 100.0}
         experiments = gen.generate_experiments(state, step_size=1.0, metrics=['quality', 'competency'])
-        # quality should only have + (since - would go below 0)
+        # quality should only have + (since - would go below the canonical min 60)
         # competency should only have - (since + would go above 100)
         quality_exps = [e for e in experiments if e['metric'] == 'quality']
         competency_exps = [e for e in experiments if e['metric'] == 'competency']

@@ -24,7 +24,6 @@ __all__ = [
     "wrap_nps_prediction",
     "adapt",
     "adapt_domain_prediction",
-    "adapt_target_state_prediction",
     "from_prior_only",
     "from_observed_counts",
     "from_monte_carlo",

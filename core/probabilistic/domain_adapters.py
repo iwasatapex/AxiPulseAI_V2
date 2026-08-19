@@ -45,27 +45,6 @@ def adapt_domain_prediction(
     )
 
 
-def adapt_target_state_prediction(
-    value: Any,
-    *,
-    metric: str | None = None,
-    target: float | None = None,
-    uncertainty: float = 0.05,
-    simulations: int = 10000,
-    seed: int = 0,
-) -> UniversalPredictionEnvelope:
-    return adapt_domain_prediction(
-        value,
-        predictor="TargetStateEngine",
-        metric=metric,
-        target=target,
-        uncertainty=uncertainty,
-        simulations=simulations,
-        seed=seed,
-    )
-
-
 __all__ = [
     "adapt_domain_prediction",
-    "adapt_target_state_prediction",
 ]

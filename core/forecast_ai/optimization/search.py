@@ -27,7 +27,7 @@ class DeterministicHillClimb:
         self.timed_out = False
 
     def _clamp(self, state: OperationalState) -> OperationalState:
-        """Clamp values to config-defined bounds."""
+        """Clamp values to config-defined canonical hard bounds."""
         new_state = deepcopy(state)
         for field in self.fields:
             if field in self.bounds:
@@ -35,6 +35,23 @@ class DeterministicHillClimb:
                 current = getattr(new_state, field, 0.0)
                 setattr(new_state, field, max(min_val, min(max_val, current)))
         return new_state
+
+    def _within_bounds(self, state: OperationalState) -> bool:
+        """True iff every field lies within its canonical hard bound.
+
+        This is the production gate that stops an operationally-invalid state
+        (e.g. attendance < 65) from ever being evaluated, selected as
+        best_solution, or exposed as a candidate — even if its OH/NPS distance
+        to the target is otherwise excellent.
+        """
+        for field in self.fields:
+            if field not in self.bounds:
+                continue
+            lo, hi = self.bounds[field]
+            value = getattr(state, field, 0.0)
+            if not (lo <= value <= hi):
+                return False
+        return True
 
     def _generate_candidates(self, current: OperationalState) -> List[OperationalState]:
         """Generate candidate states deterministically.
@@ -92,8 +109,13 @@ class DeterministicHillClimb:
         # iterations, so a slow evaluator cannot run past the budget.
         deadline = start_time + max(0.0, float(timeout_seconds))
         self.timed_out = False
-        original_state = deepcopy(current_state)
-        best_state = current_state
+        # Clamp the caller's initial state to the canonical hard bounds before
+        # it becomes the search baseline. This guarantees the do-nothing state
+        # (and therefore every solution's ``state`` and the derived
+        # ``state_changes``) is always a valid operational state, even if a
+        # caller supplied an out-of-bounds current state.
+        original_state = self._clamp(deepcopy(current_state))
+        best_state = original_state
         best_oh = None
         best_nps = None
         best_distance = float('inf')
@@ -167,6 +189,14 @@ class DeterministicHillClimb:
                 # results).
                 key = tuple(getattr(candidate, f, 0.0) for f in self.fields)
                 if key in evaluated_states:
+                    continue
+                # Production hard-bounds gate: reject any operationally-invalid
+                # state BEFORE constraint validation and BEFORE the (expensive)
+                # model evaluation. Clamping in _generate_candidates already
+                # keeps generated states in-bounds; this explicit guard is the
+                # authoritative rejection so an out-of-bounds state can never be
+                # evaluated, selected as best_solution, or exposed.
+                if not self._within_bounds(candidate):
                     continue
                 # Validate constraints
                 if not ConstraintValidator.validate(candidate, constraints):

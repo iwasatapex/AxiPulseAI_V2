@@ -246,14 +246,6 @@ def test_find_target_state_rejects_out_of_range_transfer():
         svc.find_target_state({"transfer": 30.0})
 
 
-def test_reverse_optimize_rejects_out_of_range():
-    from gui import services as svc
-    with pytest.raises(ValueError, match="within"):
-        svc.reverse_optimize("OH", 150.0)
-    with pytest.raises(ValueError, match="within"):
-        svc.reverse_optimize("NPS", 101.0)
-
-
 # =====================================================================
 # system_health
 # =====================================================================
@@ -313,39 +305,6 @@ def test_inspect_model_engine_version_falls_back_to_metadata(tmp_path):
                  "metadata": {"engine_version": "10.10"}}, p)
     info = _inspect_model(p)
     assert info["engine_version"] == "10.10"
-
-
-# =====================================================================
-# reverse_optimize
-# =====================================================================
-
-def test_reverse_optimize_rejects_unknown_metric():
-    from gui.services import reverse_optimize
-    with pytest.raises(ValueError):
-        reverse_optimize("GAMMA", 50.0)
-
-
-def test_reverse_optimize_parses_engine_result(monkeypatch):
-    from gui import services as svc
-
-    def _fake_find(targets, **kwargs):
-        assert targets == {"operational_health": 96.0}
-        assert kwargs.get("total_candidates") == 20000
-        return {
-            "targets": targets,
-            "recommended_state": {"quality": 92.0, "release": 62.0},
-            "distance": 0.05,
-            "consensus": {"oh": 96.01, "nps": 81.5, "release": 62.0},
-            "leaderboards": {"OH": [{"model": "CatBoost", "prediction": 96.01}]},
-        }
-
-    monkeypatch.setattr(svc, "find_target_state", _fake_find)
-    out = svc.reverse_optimize("OH", 96.0)
-    assert out["metric"] == "OH"
-    assert out["found"] is True
-    assert out["predicted"] == 96.01
-    assert out["distance"] == 0.05
-    assert out["recommended_state"]["quality"] == 92.0
 
 
 # =====================================================================

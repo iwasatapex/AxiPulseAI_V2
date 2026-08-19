@@ -697,61 +697,177 @@ def _validate_targets(targets: Dict[str, float]) -> None:
         raise ValueError("Invalid target(s): " + "; ".join(errors))
 
 
-_REVERSE_TARGET_KEY = {"OH": "operational_health", "NPS": "nps"}
-_REVERSE_BOUNDS = {"OH": (ct.OH_MIN, ct.OH_MAX), "NPS": (ct.NPS_MIN, ct.NPS_MAX)}
+def _default_reverse_initial_state() -> Dict[str, float]:
+    """Canonical starting operational state for the reverse optimizer.
 
-
-def reverse_optimize(metric: str, target: float,
-                     family: Optional[str] = None) -> Dict[str, Any]:
-    """Reverse-optimise the KPIs that drive a single target metric.
-
-    ``metric`` is either ``"OH"`` (Operational Health) or ``"NPS"``. This
-    delegates to the canonical TargetStateEngine (the one and only reverse
-    optimizer in the V2 engine) with a single target, and returns the best
-    KPI combination found plus the achieved consensus value and distance.
-
-    ``family`` (optional) is the explicitly chosen model pair to run the
-    council on — forwarded to :func:`find_target_state`.
-
-    The target is validated against the canonical metric range (OH 0-100,
-    NPS -100..100) before reaching the engine.
+    Uses the canonical V2.3 KPI target/defaults (mirrored in ``ct.KPI``) as
+    the seed state. The optimizer then GENERATES new candidate states and
+    evaluates each through the canonical PredictionService — it never scans
+    existing trained models.
     """
-    if metric not in _REVERSE_TARGET_KEY:
-        raise ValueError(f"Unknown reverse-optimisation metric: {metric}")
+    return {
+        "quality": float(ct.KPI["quality"]["default"]),
+        "competency": float(ct.KPI["competency"]["default"]),
+        "attendance": float(ct.KPI["attendance"]["default"]),
+        "release": float(ct.KPI["release"]["default"]),
+        "transfer": float(ct.KPI["transfer"]["default"]),
+        "operations_health": float(ct.KPI["operations_health"]["default"]),
+        "nps": float(ct.KPI["nps"]["default"]),
+    }
 
-    lo, hi = _REVERSE_BOUNDS[metric]
-    try:
-        value = float(target)
-    except (TypeError, ValueError):
-        raise ValueError(f"Target {metric} must be numeric, got {target!r}")
-    if not (lo <= value <= hi):
-        raise ValueError(
-            f"Target {metric} must be within [{lo:g}, {hi:g}], got {value:g}"
+
+def reverse_optimize_canonical(
+    target_oh: Optional[float] = None,
+    target_nps: Optional[float] = None,
+    family: Optional[str] = None,
+    initial_state: Optional[Dict[str, float]] = None,
+    tolerance: float = 0.5,
+    max_iterations: int = 200,
+    timeout_seconds: int = 60,
+) -> Dict[str, Any]:
+    """Run the canonical JOINT OH+NPS reverse optimizer.
+
+    This is the only reverse path the GUI uses. It:
+      * GENERATES new operational states and evaluates each through the
+        canonical PredictionService (never scans existing trained models),
+      * predicts OH and NPS together from the SAME generated state,
+      * scores candidates with the canonical joint OH+NPS ScoreCalculator,
+      * never calls TargetStateEngine for this reverse OH/NPS path,
+      * never derives NPS uncertainty by adding noise to a scalar NPS — each
+        exposed candidate carries the canonical Bayesian/Monte-Carlo NPS
+        interval (0..10 survey distribution -> Monte Carlo percentiles),
+      * exposes multiple ranked generated candidates
+        (``metadata[\"ranked_candidates\"]``, up to ``MAX_EXPOSED_CANDIDATES``),
+      * returns a GUI-friendly payload with ``success``/``status``,
+        target & predicted OH/NPS, distance, recommended state, and the
+        ranked candidates.
+
+    ``target_oh`` / ``target_nps`` are optional but at least one must be
+    supplied; supplying neither returns an abstention (``success=False``)
+    rather than inventing an objective.
+    """
+    # Normalise + validate targets at the service boundary.
+    if target_oh is not None:
+        target_oh = float(target_oh)
+        if not (ct.OH_MIN <= target_oh <= ct.OH_MAX):
+            raise ValueError(
+                f"Target OH must be within [{ct.OH_MIN:g}, {ct.OH_MAX:g}], "
+                f"got {target_oh:g}"
+            )
+    if target_nps is not None:
+        target_nps = float(target_nps)
+        if not (ct.NPS_MIN <= target_nps <= ct.NPS_MAX):
+            raise ValueError(
+                f"Target NPS must be within [{ct.NPS_MIN:g}, {ct.NPS_MAX:g}], "
+                f"got {target_nps:g}"
+            )
+
+    # Abstention: never invent an objective when neither target is supplied.
+    if target_oh is None and target_nps is None:
+        return {
+            "success": False,
+            "status": "No target supplied",
+            "abstained": True,
+            "target_oh": None,
+            "target_nps": None,
+            "predicted_oh": None,
+            "predicted_nps": None,
+            "distance": None,
+            "found": False,
+            "recommended_state": {},
+            "state_changes": {},
+            "candidates": [],
+            "errors": [
+                "No optimization objective (target_oh/target_nps) specified. "
+                "Supply at least one target."
+            ],
+            "warnings": [],
+            "active_family": family,
+            "metric": "OH+NPS",
+            "target": None,
+            "predicted": None,
+            "consensus": {"oh": None, "nps": None},
+            "leaderboards": {},
+        }
+
+    if family:
+        select_model_family(family)
+    active = family if family else STATE.get_active_family()
+    if not active:
+        raise ModelPairError(
+            "No active model family. Select a model on the Models page first."
         )
 
-    key = _REVERSE_TARGET_KEY[metric]
-    # Single-metric interactive search: fewer candidates than the full target
-    # state sweep keeps the reverse optimizer responsive while still covering
-    # a wide KPI space.
-    result = find_target_state(
-        {key: value}, family=family, total_candidates=20000
+    state = dict(initial_state) if initial_state else _default_reverse_initial_state()
+
+    from core.forecast_ai.engines.reverse_optimizer import (
+        ReverseOptimizer as ReverseEngine,
     )
 
-    recommended = result.get("recommended_state") or {}
-    consensus = result.get("consensus") or {}
-    predicted = consensus.get("oh") if metric == "OH" else consensus.get("nps")
+    request = ForecastRequest(
+        operation=OperationType.REVERSE_OPTIMIZE,
+        parameters={
+            "target_oh": target_oh,
+            "target_nps": target_nps,
+            "state": state,
+            "tolerance": tolerance,
+            "max_iterations": max_iterations,
+            "timeout_seconds": timeout_seconds,
+            "priority": "balanced",
+        },
+    )
 
-    return {
-        "metric": metric,
-        "target": value,
-        "found": bool(recommended),
-        "distance": result.get("distance"),
-        "predicted": predicted,
-        "recommended_state": recommended,
-        "consensus": consensus,
-        "leaderboards": result.get("leaderboards") or {},
-        "active_family": family,
+    with _PROVIDER_LOCK:
+        PredictorProvider.set_model_family(active)
+        engine = ReverseEngine()
+        response = engine.execute(request)
+
+    payload = response.payload or {}
+    best = payload.get("best_solution") or {}
+    metadata = payload.get("metadata") or {}
+    ranked = metadata.get("ranked_candidates") or []
+    success = bool(response.success)
+    errors = list(response.errors or []) or []
+
+    predicted_oh = best.get("predicted_operations_health")
+    predicted_nps = best.get("predicted_nps")
+
+    out: Dict[str, Any] = {
+        "success": success,
+        "status": (
+            "Target reached within tolerance."
+            if success
+            else "Target is not reachable within the configured tolerance — "
+            "showing the closest generated state."
+        ),
+        "abstained": False,
+        "target_oh": target_oh,
+        "target_nps": target_nps,
+        "predicted_oh": predicted_oh,
+        "predicted_nps": predicted_nps,
+        "distance": best.get("distance_to_target"),
+        "found": bool(best),
+        "recommended_state": best.get("state") or {},
+        "state_changes": best.get("state_changes") or {},
+        "candidates": ranked,
+        "errors": errors,
+        "warnings": list(response.warnings or []),
+        "active_family": active,
+        "tolerance": tolerance,
+        "best_effort": bool(metadata.get("best_effort")),
+        "target_achieved": bool(metadata.get("target_achieved", success)),
+        "timed_out": bool(metadata.get("timed_out")),
+        # Analytics compatibility surface (consumed by gui.analytics.reverse).
+        "metric": "OH+NPS",
+        "target": target_oh if target_oh is not None else target_nps,
+        "predicted": (
+            predicted_oh if target_oh is not None else predicted_nps
+        ),
+        "consensus": {"oh": predicted_oh, "nps": predicted_nps},
+        "leaderboards": {},
+        "metadata": metadata,
     }
+    return out
 
 
 # =====================================================================

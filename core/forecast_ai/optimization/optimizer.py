@@ -121,7 +121,19 @@ class ReverseOptimizer:
         )
         timed_out = getattr(searcher, "timed_out", False)
 
-        acceptable = [s for s in solutions if s.distance_to_target <= target.tolerance]
+        # Candidate feasibility requires BOTH the OH/NPS target objective
+        # satisfied within tolerance AND every operational state variable
+        # respecting its canonical hard bound. An operationally-invalid state
+        # (e.g. attendance < 65) is never acceptable merely because its
+        # OH/NPS distance is excellent.
+        def _in_bounds(sol) -> bool:
+            return ConstraintValidator.validate_hard_bounds(sol.state)
+
+        valid_solutions = [s for s in solutions if _in_bounds(s)]
+        acceptable = [
+            s for s in valid_solutions
+            if s.distance_to_target <= target.tolerance
+        ]
         original_solution = next(
             (s for s in solutions if (s.metadata or {}).get("is_original")),
             None,
@@ -131,7 +143,7 @@ class ReverseOptimizer:
             success = True
             best_effort = False
         else:
-            best_solution = solutions[0] if solutions else None
+            best_solution = valid_solutions[0] if valid_solutions else None
             success = False
             # Genuine best-effort: a valid candidate strictly improves toward
             # the target versus the do-nothing (original) state. The target was
@@ -230,7 +242,14 @@ class ReverseOptimizer:
 
         for rank, sol in enumerate(display_order[:MAX_EXPOSED_CANDIDATES], start=1):
             is_original = bool((sol.metadata or {}).get("is_original"))
-            feasible = sol.distance_to_target <= target.tolerance
+            # Feasibility = target reached within tolerance AND a valid
+            # operational state (every variable within its canonical hard
+            # bound). A state that is outside the hard bounds must never be
+            # flagged feasible even if its OH/NPS distance is perfect.
+            feasible = (
+                sol.distance_to_target <= target.tolerance
+                and ConstraintValidator.validate_hard_bounds(sol.state)
+            )
 
             oh_error = (
                 None if target_oh is None or sol.predicted_operations_health is None
