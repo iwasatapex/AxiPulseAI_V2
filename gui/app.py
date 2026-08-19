@@ -100,7 +100,12 @@ _NAV_ICONS = {
 
 
 def main() -> None:
-    c.apply_theme()
+    # Read the persisted theme (defaults to Midnight = the current dark look)
+    # and apply the design system up-front so every surface themes immediately.
+    from gui.theme import DEFAULT_THEME, theme_names
+
+    theme = svc.STATE.get_theme() or DEFAULT_THEME
+    c.apply_theme(theme)
 
     status = svc.STATE.status()
     active = status.get("active_family")
@@ -108,7 +113,8 @@ def main() -> None:
 
     st.sidebar.markdown(
         '<div class="ap-brand" style="font-size:1.1rem">'
-        '<span class="ap-logo">AI</span>AxiPulse<span style="color:#6366f1">AI</span></div>',
+        '<span class="ap-logo">AI</span>AxiPulse'
+        '<span style="color:var(--ax-accent)">AI</span></div>',
         unsafe_allow_html=True,
     )
     st.sidebar.caption("Healthcare CX Intelligence")
@@ -121,6 +127,9 @@ def main() -> None:
     else:
         c.status_pill("No active model", "none", sidebar=True)
         st.sidebar.caption("Select one on **Models**.")
+
+    # Persistent appearance selector (10 themes: 3 bright + 7 dark).
+    _render_theme_selector(theme)
 
     # Honor cross-page navigation requests (e.g. a zero-model state offering
     # a "Go to Train page" action). The widget key is set before the radio is
@@ -153,6 +162,32 @@ def main() -> None:
     # Dispatch to the selected view module.
     view = NAV[page]
     view.render()
+
+
+def _render_theme_selector(current: str) -> None:
+    """Sidebar appearance selector; persists the chosen theme in session state.
+
+    Changing the theme immediately re-applies ``apply_theme`` (which runs at
+    the top of ``main`` on the rerun) and survives navigation between pages.
+    """
+    from gui.theme import DEFAULT_THEME, THEMES, theme_names
+
+    options = theme_names()
+    current = svc.STATE.get_theme() or DEFAULT_THEME
+    idx = options.index(current) if current in options else options.index(DEFAULT_THEME)
+
+    with st.sidebar.expander("Appearance", expanded=False):
+        chosen = st.selectbox(
+            "Theme",
+            options=options,
+            index=idx,
+            format_func=lambda name: name,
+            key="apgui_theme_picker",
+            help=f"App theme ({len(THEMES)} available: 3 bright + 7 dark).",
+        )
+        if chosen and chosen != current:
+            svc.STATE.set_theme(chosen)
+            st.rerun()
 
 
 if __name__ == "__main__":

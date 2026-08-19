@@ -19,17 +19,20 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Design tokens
 # ---------------------------------------------------------------------------
-# Kept as module-level constants (not just CSS vars) because several views
-# pass explicit colors into components (e.g. pill(text, color=...)).
+# Semantic color tokens are exposed as root CSS variables (--ax-*) defined in
+# gui.theme. Components reference them via these constants (valid CSS var()
+# expressions), so every surface themes centrally instead of scattering hex.
 
-ACCENT = "#6366f1"      # indigo — primary brand / active state
-ACCENT_2 = "#22d3ee"    # cyan — secondary accent, charts
-SUCCESS = "#22c55e"
-WARN = "#f59e0b"
-DANGER = "#ef4444"
-NEUTRAL = "#94a3b8"
+from .theme import DEFAULT_THEME, css_variables, get_theme
 
-# Semantic status -> (color, icon) used by status_pill()
+ACCENT = "var(--ax-accent)"      # primary brand / active state
+ACCENT_2 = "var(--ax-accent-2)"  # secondary accent
+SUCCESS = "var(--ax-success)"
+WARN = "var(--ax-warning)"
+DANGER = "var(--ax-error)"
+NEUTRAL = "var(--ax-muted)"
+
+# Semantic status -> (color token, icon) used by status_pill() / kpi_tile().
 _STATUS_STYLE = {
     "ready": (SUCCESS, "\u25cf"),
     "ok": (SUCCESS, "\u25cf"),
@@ -48,68 +51,141 @@ _STATUS_STYLE = {
 }
 
 
-def apply_theme() -> None:
-    """Apply the AxiPulseAI design system (CSS variables + component classes).
+def apply_theme(theme: Optional[str] = None) -> None:
+    """Apply the AxiPulseAI design system for the selected theme.
 
-    Layered on top of the active Streamlit theme (dark or light) via
-    Streamlit's own CSS variables, so it stays consistent across both
-    without hard-coding a page background.
+    Injects the root ``--ax-*`` CSS variables from ``gui.theme`` for one of the
+    10 themes (3 bright + 7 dark), the reusable component classes, and a layout
+    rule that clears the Streamlit top toolbar so the application header is
+    never clipped/undercut. ``theme`` is a name in ``gui.theme.THEMES``;
+    defaults to ``gui.theme.DEFAULT_THEME`` (Midnight).
     """
+    theme_name = theme if theme else DEFAULT_THEME
+    get_theme(theme_name)  # validate/fallback
+    vars_block = css_variables(theme_name)
     st.markdown(
         f"""
         <style>
-        :root {{
-            --ap-accent: {ACCENT};
-            --ap-accent-2: {ACCENT_2};
-            --ap-success: {SUCCESS};
-            --ap-warn: {WARN};
-            --ap-danger: {DANGER};
-            --ap-neutral: {NEUTRAL};
-            --ap-radius: 12px;
-            --ap-radius-sm: 8px;
-        }}
+        {vars_block}
 
-        .block-container {{ padding-top: 1.6rem; max-width: 1400px; }}
-        [data-testid="stSidebar"] {{ border-right: 1px solid rgba(148,163,184,0.15); }}
-        [data-testid="stMetricValue"] {{ font-weight: 700; }}
+        /* ---- layout: clear the Streamlit toolbar so the header is never clipped ---- */
+        .block-container {{ padding-top: 2.6rem; padding-bottom: 3.5rem; max-width: 1400px; }}
+        .stApp, [data-testid="stAppViewContainer"] {{ background: var(--ax-bg); }}
+        [data-testid="stAppViewContainer"] {{ color: var(--ax-text); }}
+        [data-testid="stHeader"] {{ background: transparent; }}
+
+        /* ---- native Streamlit surfaces ---- */
+        [data-testid="stSidebar"] {{
+            background: var(--ax-sidebar-bg);
+            border-right: 1px solid var(--ax-border);
+        }}
+        [data-testid="stSidebar"] *, [data-testid="stSidebar"] .stMarkdown {{ color: var(--ax-text); }}
+        [data-testid="stSidebar"] small, [data-testid="stCaptionContainer"] {{ color: var(--ax-muted); }}
+        [data-testid="stMetricValue"] {{ font-weight: 700; color: var(--ax-text); }}
         [data-testid="stMetric"] {{
-            background: rgba(148,163,184,0.06);
-            border: 1px solid rgba(148,163,184,0.14);
-            border-radius: var(--ap-radius-sm);
+            background: var(--ax-surface-2);
+            border: 1px solid var(--ax-border);
+            border-radius: var(--ax-radius-sm);
             padding: 10px 14px 6px 14px;
         }}
-        hr {{ margin: 0.6rem 0 1.1rem 0 !important; opacity: 0.25; }}
+        [data-testid="stMetricLabel"] {{ color: var(--ax-muted); }}
+        [data-testid="stMetricDelta"] {{ color: var(--ax-success); }}
+        hr {{ margin: 0.6rem 0 1.1rem 0 !important; opacity: 0.35; border-color: var(--ax-border); }}
 
+        /* ---- text + headings ---- */
+        html, body {{ color: var(--ax-text); background: var(--ax-bg); }}
+        .stMarkdown, [data-testid="stMarkdownContainer"] {{ color: var(--ax-text); }}
+        .stMarkdown p {{ line-height: 1.55; }}
+        h1, h2, h3, h4, h5, h6,
+        .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+        [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2,
+        [data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4 {{
+            color: var(--ax-text);
+        }}
+
+        /* ---- inputs ---- */
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input,
+        [data-testid="stDateInput"] input,
+        [data-testid="stTimeInput"] input,
+        textarea {{
+            background: var(--ax-input-bg) !important;
+            color: var(--ax-text) !important;
+            border: 1px solid var(--ax-border) !important;
+        }}
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div {{
+            background: var(--ax-input-bg) !important;
+            color: var(--ax-text) !important;
+        }}
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div:hover {{ border-color: var(--ax-accent); }}
+
+        /* ---- buttons ---- */
+        [data-testid="stButton"] button,
+        [data-testid="stFormSubmitButton"] button {{
+            background: var(--ax-surface-2);
+            color: var(--ax-text);
+            border: 1px solid var(--ax-border);
+        }}
+        [data-testid="stButton"] button:hover,
+        [data-testid="stFormSubmitButton"] button:hover {{ border-color: var(--ax-accent); }}
+        [data-testid="stButton"] button[kind="primary"],
+        [data-testid="stFormSubmitButton"] button[kind="primary"] {{
+            background: var(--ax-accent);
+            color: var(--ax-logo-text);
+            border-color: var(--ax-accent);
+        }}
+
+        /* ---- sidebar navigation selection ---- */
+        [data-testid="stSidebar"] [data-baseweb="radio"] label {{ color: var(--ax-text); }}
+        [data-testid="stSidebar"] [role="radiogroup"] [aria-checked="true"] {{
+            background: var(--ax-nav-selected);
+        }}
+
+        /* ---- alerts / info / tables ---- */
+        [data-testid="stAlert"] {{ background: var(--ax-surface); border: 1px solid var(--ax-border); }}
+        [data-testid="stDataFrame"], [data-testid="stTable"] {{
+            background: var(--ax-surface); color: var(--ax-text);
+        }}
+
+        /* ---- application header (brand + status pills) ---- */
         .ap-header {{
             display: flex; align-items: center; justify-content: space-between;
-            padding: 2px 0 14px 0; flex-wrap: wrap; gap: 10px;
+            flex-wrap: wrap; gap: 12px;
+            padding: 6px 0 18px 0;
+            line-height: 1.4;
+            min-height: 56px;
+            box-sizing: border-box;
         }}
         .ap-brand {{
             font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;
-            display: flex; align-items: center; gap: 8px;
+            line-height: 1.25; display: flex; align-items: center; gap: 10px;
+            overflow: visible;
         }}
         .ap-brand .ap-logo {{
             display: inline-flex; align-items: center; justify-content: center;
-            width: 30px; height: 30px; border-radius: 8px;
-            background: linear-gradient(135deg, var(--ap-accent), var(--ap-accent-2));
-            color: white; font-size: 0.95rem; font-weight: 800;
+            width: 34px; height: 34px; line-height: 1; border-radius: 8px;
+            background: linear-gradient(135deg, var(--ax-accent), var(--ax-accent-2));
+            color: var(--ax-logo-text); font-size: 0.95rem; font-weight: 800;
+            flex-shrink: 0;
         }}
         .ap-brand small {{
-            color: var(--ap-neutral); font-weight: 500; font-size: 0.8rem;
+            color: var(--ax-muted); font-weight: 500; font-size: 0.8rem;
             margin-left: 4px; letter-spacing: 0;
         }}
         .ap-header-meta {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }}
+        .stMarkdown {{ overflow: visible; }}
 
+        /* ---- cards / sections / pills ---- */
         .ap-card {{
-            border: 1px solid rgba(148,163,184,0.16);
-            border-radius: var(--ap-radius);
+            border: 1px solid var(--ax-border);
+            border-radius: var(--ax-radius);
             padding: 16px 18px;
             margin-bottom: 12px;
-            background: rgba(148,163,184,0.045);
+            background: var(--ax-surface);
         }}
         .ap-card-title {{
             font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
-            color: var(--ap-neutral); font-weight: 600; margin-bottom: 6px;
+            color: var(--ax-muted); font-weight: 600; margin-bottom: 6px;
         }}
 
         .ap-section {{
@@ -118,60 +194,58 @@ def apply_theme() -> None:
         }}
         .ap-eyebrow {{
             font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
-            color: var(--ap-neutral); font-weight: 700; margin-bottom: 2px;
+            color: var(--ax-muted); font-weight: 700; margin-bottom: 2px;
         }}
 
         .ap-pill {{
             display: inline-flex; align-items: center; gap: 5px;
             border-radius: 999px; padding: 3px 11px; font-size: 0.74rem; font-weight: 600;
             border: 1px solid currentColor;
-            background: rgba(148,163,184,0.1);
+            background: var(--ax-surface-2);
             white-space: nowrap;
         }}
         .ap-pill .dot {{ font-size: 0.6rem; }}
 
         .ap-model-badge {{
             display: inline-flex; flex-direction: column; gap: 2px;
-            border: 1px solid rgba(99,102,241,0.35);
-            background: rgba(99,102,241,0.08);
-            border-radius: var(--ap-radius-sm);
+            border: 1px solid var(--ax-accent);
+            background: var(--ax-surface-2);
+            border-radius: var(--ax-radius-sm);
             padding: 8px 12px;
         }}
-        .ap-model-badge .row {{
-            display: flex; justify-content: space-between; gap: 14px; font-size: 0.82rem;
-        }}
-        .ap-model-badge .row .k {{ color: var(--ap-neutral); }}
+        .ap-model-badge .row {{ display: flex; justify-content: space-between; gap: 14px; font-size: 0.82rem; }}
+        .ap-model-badge .row .k {{ color: var(--ax-muted); }}
         .ap-model-badge .row .v {{ font-weight: 700; }}
 
         .ap-kpi {{
-            border: 1px solid rgba(148,163,184,0.16);
-            border-radius: var(--ap-radius);
+            border: 1px solid var(--ax-border);
+            border-radius: var(--ax-radius);
             padding: 14px 16px;
-            background: rgba(148,163,184,0.045);
+            background: var(--ax-surface);
             height: 100%;
         }}
         .ap-kpi .label {{
-            font-size: 0.76rem; color: var(--ap-neutral); font-weight: 600;
+            font-size: 0.76rem; color: var(--ax-muted); font-weight: 600;
             display: flex; justify-content: space-between; align-items: center;
         }}
         .ap-kpi .value {{ font-size: 1.7rem; font-weight: 800; line-height: 1.25; margin-top: 2px; }}
-        .ap-kpi .sub {{ font-size: 0.78rem; color: var(--ap-neutral); margin-top: 2px; }}
-        .ap-kpi .trend-up {{ color: var(--ap-success); }}
-        .ap-kpi .trend-down {{ color: var(--ap-danger); }}
-        .ap-kpi .trend-flat {{ color: var(--ap-neutral); }}
+        .ap-kpi .sub {{ font-size: 0.78rem; color: var(--ax-muted); margin-top: 2px; }}
+        .ap-kpi .trend-up {{ color: var(--ax-success); }}
+        .ap-kpi .trend-down {{ color: var(--ax-error); }}
+        .ap-kpi .trend-flat {{ color: var(--ax-muted); }}
         .ap-kpi .bar-track {{
             width: 100%; height: 5px; border-radius: 999px;
-            background: rgba(148,163,184,0.18); margin-top: 9px; overflow: hidden;
+            background: var(--ax-surface-2); margin-top: 9px; overflow: hidden;
         }}
         .ap-kpi .bar-fill {{ height: 100%; border-radius: 999px; }}
 
         .ap-empty {{
-            border: 1px dashed rgba(148,163,184,0.3);
-            border-radius: var(--ap-radius);
-            padding: 22px 18px; text-align: center; color: var(--ap-neutral);
+            border: 1px dashed var(--ax-border);
+            border-radius: var(--ax-radius);
+            padding: 22px 18px; text-align: center; color: var(--ax-muted);
         }}
         .ap-empty .icon {{ font-size: 1.6rem; margin-bottom: 6px; }}
-        .ap-muted {{ color: var(--ap-neutral); }}
+        .ap-muted {{ color: var(--ax-muted); }}
         .ap-code {{ font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.85rem; }}
 
         button[data-baseweb="tab"] {{ font-weight: 600; }}

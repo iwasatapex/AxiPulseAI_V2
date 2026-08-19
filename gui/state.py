@@ -41,6 +41,13 @@ def _key(name: str) -> str:
 class GUIState:
     """Session-scoped holder for the active model family + recent results."""
 
+    # ---------------- theme ----------------
+    def set_theme(self, theme: Optional[str]) -> None:
+        _store()[_key("theme")] = theme
+
+    def get_theme(self) -> Optional[str]:
+        return _store().get(_key("theme"))
+
     # ---------------- model family ----------------
     def set_active_family(self, family: Optional[str]) -> None:
         previous = self.get_active_family()
@@ -101,6 +108,7 @@ class GUIState:
         s = _store()
         for k in (
             "active_family",
+            "theme",
             "last_prediction",
             "last_forecast",
             "last_adie",
