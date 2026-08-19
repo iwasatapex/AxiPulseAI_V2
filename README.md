@@ -268,6 +268,27 @@ Legacy loading is explicit/opt-in.
 
 Test, stress, smoke, and legacy artifacts cannot silently become production.
 
+### Model-family selection
+
+Model families are discovered by scanning `models/` for complete `<family>_OH.pkl`
++ `<family>_NPS.pkl` pairs (`core/forecast_ai/prediction/model_selector.list_model_families`).
+
+The GUI model selector passes the chosen family into the service layer, which
+activates it on `PredictorProvider`. Predictors are then created by name:
+`create_oh_predictor("<family>")` loads `models/<family>_OH.pkl` and
+`create_nps_predictor("<family>")` loads `models/<family>_NPS.pkl`
+(`core/forecast_ai/prediction/predictor_config`). Changing the selected family
+therefore changes which artifact files are loaded for inference.
+
+Currently available families:
+
+- `100k-10yr` — the named source pair (`models/100k-10yr_OH.pkl`,
+  `models/100k-10yr_NPS.pkl`).
+- `production` — `models/production_OH.pkl` / `models/production_NPS.pkl`, the
+  promoted canonical pair. It is a byte-identical/promoted copy of the
+  `100k-10yr` artifacts (same SHA-256 in the manifest), so selecting either
+  family runs the same fitted models.
+
 ---
 
 ## Production Artifact Integrity
@@ -289,6 +310,26 @@ Validation includes:
 - NPS 11-output contract.
 
 A corrupt or incompatible production artifact must fail rather than silently falling back.
+
+### Fallback behavior
+
+Fallback predictors are **never** used silently when production artifacts are missing.
+If no canonical artifact can be loaded, the default behavior is to **raise**
+(`FileNotFoundError` from `predictor_config.create_oh_predictor()` /
+`create_nps_predictor()`, or `RuntimeError` when the loaded model is not trained).
+The trained model is always called; an absent model surfaces as an error, never as
+a deterministic substitute.
+
+The only fallback predictors (`_FallbackOHPredictor` / `_FallbackNPSPredictor`) are
+explicit degraded-mode objects that compute a hard-coded formula. They are reachable
+**only** when all of the following hold:
+
+- no canonical production artifact exists for the family;
+- no legacy mirror exists;
+- the environment variable `AXIPULSE_ALLOW_FALLBACK_MODE` is set to
+  `1`, `true`, or `yes` (see `predictor_config._allow_fallback()`).
+
+Without that opt-in flag, a missing model raises instead of degrading.
 
 ---
 
@@ -603,6 +644,37 @@ The system must not:
 - silently fallback;
 - produce contradictory decisions;
 - present business rules as model predictions.
+
+### Forecast uses trained models
+
+Production Forecast drives every horizon day from the **trained model artifacts**;
+it does not manufacture OH/NPS from deterministic formulas.
+
+- **OH** predictions come from the trained **CatBoostRegressor** (loaded from
+  `models/<family>_OH.pkl`; `core/operation_health_predictor.inference` →
+  `model.predict`).
+- **NPS** predictions come from the trained **XGBoost-based MultiOutputRegressor**
+  (loaded from `models/<family>_NPS.pkl`; 11 survey-score outputs) which feeds the
+  canonical Bayesian / Monte-Carlo survey-score analysis → NPS.
+- Forecast is **recursive**: each day's evolved state and features feed the next
+  day's prediction (`prediction[t] → state[t] → features[t+1] → prediction[t+1]`).
+- **Scenario changes perturb the input KPI state only**; they do not directly
+  manufacture OH/NPS outputs. OH/NPS always come from the model.
+
+---
+
+## Reverse Optimization
+
+`gui.services.reverse_optimize_canonical()` is the canonical **OH/NPS reverse
+optimization** entry point. The GUI reverse path calls it and it drives the
+canonical `core.forecast_ai.engines.reverse_optimizer.ReverseOptimizer`, which
+generates operational states and evaluates each through the canonical
+`PredictionService` (joint OH + NPS from the same generated state). It never
+calls TargetStateEngine for this OH/NPS reverse path.
+
+TargetStateEngine remains available only for the separate **multi-KPI Target State**
+feature via `gui.services.find_target_state()`; it is not part of the canonical
+OH/NPS reverse optimization path.
 
 ---
 
